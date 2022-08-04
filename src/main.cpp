@@ -21,10 +21,10 @@ class GesserBoy : public olc::PixelGameEngine
 
 public:
     GesserBoy()
-        //: gboy("roms/Tetris.gb")
-        // : gboy("roms/Zelda.gb")
+        : gboy("roms/Tetris.gb")
+        //: gboy("roms/Zelda.gb")
         //: gboy("roms/Star Wars.gb")
-         : gboy("roms/cpu_instrs.gb")
+        //: gboy("roms/cpu_instrs.gb")
         //: gboy("roms/individual/06-ld r,r.gb")
         //: gboy("roms/individual/07-jr,jp,call,ret,rst.gb")
     {

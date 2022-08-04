@@ -522,6 +522,13 @@ struct NOP{
     static std::string mnemonic(const Cpu &) {  return "NOP"; }
 };
 
+struct STOP{
+    using result_type = void;
+
+    static void execute(Cpu &) { }
+    static std::string mnemonic(const Cpu &) {  return "STOP"; }
+};
+
 struct PREFIX {
     using result_type = std::size_t;
 
@@ -1064,7 +1071,7 @@ template<> struct Instruction<0x0E> : Inst<2,  8, LD<C,d8>> {};
 template<> struct Instruction<0x0F> : Inst<1,  4, RRCA> {};
 
 
-INST(0x10, "STOP d8",     2,  4, nullptr };
+template<> struct Instruction<0x10> : Inst<2,  4, STOP> {};
 template<> struct Instruction<0x11> : Inst<3, 12, LD<DE,d16>> {};
 template<> struct Instruction<0x12> : Inst<1,  8, LD<At<DE>, A>> {};
 template<> struct Instruction<0x13> : Inst<1,  8, INC<DE>> {};
@@ -1102,10 +1109,14 @@ template<> struct Instruction<0x2F> : Inst<1,  8, CPL> {};
 template<> struct Instruction<0x30> : Inst<2,  0, JR<FlagNotC,r8>> {};
 template<> struct Instruction<0x31> : Inst<3, 12, LD<SP,d16>> {};
 template<> struct Instruction<0x32> : Inst<1,  8, LD<At<HL,'-'>,A>> {};
+template<> struct Instruction<0x33> : Inst<1,  8, INC<SP>> {};
+template<> struct Instruction<0x34> : Inst<1, 12, INC<At<HL>>> {};
 template<> struct Instruction<0x35> : Inst<1, 12, DEC<At<HL>>> {};
 template<> struct Instruction<0x36> : Inst<2, 12, LD<At<HL>,d8>> {};
 template<> struct Instruction<0x38> : Inst<2,  0, JR<FlagC,r8>> {};
-
+template<> struct Instruction<0x39> : Inst<1,  8, ADD<HL,SP>> {};
+template<> struct Instruction<0x3A> : Inst<1,  8, LD<A, At<HL,'-'>>> {};
+template<> struct Instruction<0x3B> : Inst<1,  8, DEC<SP>> {};
 template<> struct Instruction<0x3C> : Inst<1,  4, INC<A>> {};
 template<> struct Instruction<0x3D> : Inst<1,  4, DEC<A>> {};
 template<> struct Instruction<0x3E> : Inst<2,  8, LD<A,d8>> {};
