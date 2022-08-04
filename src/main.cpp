@@ -21,12 +21,12 @@ class GesserBoy : public olc::PixelGameEngine
 
 public:
     GesserBoy()
-        : gboy("roms/Tetris.gb")
+        //: gboy("roms/Tetris.gb")
         //: gboy("roms/Zelda.gb")
         //: gboy("roms/Star Wars.gb")
         //: gboy("roms/cpu_instrs.gb")
         //: gboy("roms/individual/06-ld r,r.gb")
-        //: gboy("roms/individual/07-jr,jp,call,ret,rst.gb")
+        : gboy("roms/individual/07-jr,jp,call,ret,rst.gb")
     {
         // Name your application
         sAppName = "GesserBoy";
@@ -151,33 +151,62 @@ public:
                 DrawString(81, i*9, log[i], olc::RED);
             }
 
-            //Draw tileset
+
+
+            //Draw screen
+            const auto x_start = 0;
             const auto y_start = 9*7;
+
+            for (int y=0; y<144; ++y)
+            {
+                for (int x=0; x<160; ++x)
+                {
+                    auto pix = gboy.ppu.screen_buffer[x + 160*y];
+
+                    //if (pix == 0) continue;
+                    auto color = pix == 3 ? olc::GREY
+                               : pix == 2 ? olc::DARK_GREY
+                               : pix == 1 ? olc::VERY_DARK_GREY
+                                          : olc::BLACK;
+                    Draw(x + x_start, y + y_start, color);
+                }
+            }
+/*
+            //Draw tileset
             for (int t=0; t<384; ++t)
             {
-                auto tile_start = gboy.ppu.video_ram + t*16;
-                for (int n=0; n<16; n+=2)
+                auto tile_pixel_index=[&ppu=gboy.ppu](int tile, int x, int y)
                 {
-                    auto b0 = tile_start[n];
-                    auto b1 = tile_start[n+1];
+                    auto tile_start = ppu.video_ram + tile*16;
 
+                    auto b0 = tile_start[2*y];
+                    auto b1 = tile_start[2*y+1];
+
+                    auto mask = 1 << (7-x);
+                    auto pix = ((b0 & mask) >> (7-x) )
+                             | ((b1 & mask) >> (6-x) );
+
+                    return pix;
+                };
+
+                for (int y=0; y<8; ++y)
+                {
                     for (int x=0; x<8; ++x)
                     {
-                        auto mask = 1 << (7-x);
-                        auto pix = ((b0 & mask) >> (7-x) )
-                                 | ((b1 & mask) >> (6-x) );
+                        auto pix = tile_pixel_index(t, x, y);
 
                         if (pix == 0) continue;
                         auto color = pix == 2 ? olc::DARK_GREY
                                    : pix == 3 ? olc::GREY
                                    : pix == 1 ? olc::VERY_DARK_GREY
                                               : olc::WHITE;
-                        auto y = n/2;
                         Draw((t * 8 % 160) + x,
                              y_start + (y + t * 8 / 160 * 8), color);
                     }
                 }
             }
+            */
+
             DrawString(0, 9*6, "Dbg: ["+gboy.serial_output + "]", olc::RED);
         }
 

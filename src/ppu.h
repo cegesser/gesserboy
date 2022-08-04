@@ -31,15 +31,19 @@ public:
     std::uint8_t video_ram[0x2000];
 
     //FF40
-    //7	LCD and PPU enable	0=Off, 1=On
-    //6	Window tile map area	0=9800-9BFF, 1=9C00-9FFF
-    //5	Window enable	0=Off, 1=On
-    //4	BG and Window tile data area	0=8800-97FF, 1=8000-8FFF
-    //3	BG tile map area	0=9800-9BFF, 1=9C00-9FFF
-    //2	OBJ size	0=8x8, 1=8x16
-    //1	OBJ enable	0=Off, 1=On
-    //0	BG and Window enable/priority	0=Off, 1=On
-    std::uint8_t lcd_control = 0;
+    union {
+        std::uint8_t value;
+        struct {
+            bool lcd_ppu_enable : 1;
+            std::uint8_t window_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
+            bool window_enable : 1;
+            std::uint8_t bg_window_tile_map_area : 1; //0=8800-97FF, 1=8000-8FFF
+            std::uint8_t bg_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
+            std::uint8_t obj_size : 1; //0=8x8, 1=8x16
+            bool obj_enable : 1;
+            bool bg_window_priority : 1;
+        };
+    } lcd_control;
 
     //FF41
     //Bit 6 - LYC=LY STAT Interrupt source         (1=Enable) (Read/Write)
@@ -76,5 +80,7 @@ public:
     std::uint8_t window_x_pos = 0;
 
     bool frame_ready = false;
+
+    std::uint8_t screen_buffer[160*256];
 };
 

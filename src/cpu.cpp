@@ -26,72 +26,42 @@ std::string Cpu::state_str() const
 }
 
 
-
 template<typename Inst>
-std::array<std::uint8_t, Inst::usize> fetch_instruction_data(Cpu &cpu)
+std::string inst_to_str(const Inst &inst, const Cpu &cpu)
 {
-    std::array<std::uint8_t, Inst::usize> result;
+    std::ostringstream out;
 
-    if (Inst::usize == 0)
+    if constexpr (Inst::size == 0)
     {
-        return result;
+        return "";
     }
 
-    result[0] = InstructionTraits<Inst>::opcode;
-    for (size_t i=1; i<Inst::usize; ++i)
-    {
-        result[i] = cpu.fetch_byte();
-    }
+    auto opcode = opcode_v<Inst>;
 
-    return result;
-}
-
-template<typename Inst>
-std::conditional_t<Inst::ticks==0,std::size_t,void> call_inst_return(Cpu &cpu, const std::array<std::uint8_t, Inst::usize> &data)
-{
-    if constexpr (Inst::size == 1)
+    out << "[" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << int(opcode);
+    if constexpr (Inst::size > 1)
     {
-        return call(Inst{}, cpu);
-    }
-    else if constexpr (Inst::usize == 2)
-    {
-        if constexpr (Inst::signed_arg)
-        {
-            return call(Inst{}, cpu, std::int8_t(data[1]));
-        }
-        else
-        {
-            return call(Inst{}, cpu, data[1]);
-        }
-    }
-    else if constexpr (Inst::size == 3)
-    {
-        return call(Inst{}, cpu, data[1] | data[2] << 8);
-    }
-    else if constexpr (Inst::size == 0)
-    {
-        std::ostringstream out;
-        out <<  std::hex << std::uppercase << (int)Inst::opcode << " not implemented";
-        throw std::runtime_error(out.str());
-    }
-}
-
-template<typename Inst>
-std::size_t call_ext_inst(Cpu &cpu)
-{
-    cpu.last_inst_str = inst_to_str(Inst{}, cpu, std::array<int,2>{ 0xCB, Inst::opcode & 0xFF });
-
-    if constexpr (Inst::size != 0)
-    {
-        call(Inst{}, cpu);
-        return Inst::ticks;
+        out << " " << std::setw(2) << std::setfill('0') << int(cpu.arg1);
     }
     else
     {
-        std::ostringstream out;
-        out << std::hex << std::uppercase << (int)Inst::opcode << " not implemented";
-        throw std::runtime_error(out.str());
+        out << "   ";
     }
+    if constexpr (Inst::size > 2)
+    {
+        out << " " << std::setw(2) << std::setfill('0') << int(cpu.arg2);
+    }
+    else
+    {
+        out << "   ";
+    }
+
+    out << "] ";
+
+    using Impl = typename Inst::impl_type;
+    out << Impl::mnemonic(cpu);
+
+    return out.str();
 }
 
 template<std::size_t N=0>
@@ -99,10 +69,9 @@ std::size_t run_extendend_instruction_helper(int opcode, Cpu &cpu)
 {
     if (opcode == (N | 0xCB << 8))
     {
-        //return call_ext_inst<Inst>(cpu);
         using Inst = Instruction<N | 0xCB << 8>;
         if constexpr (Inst::new_style)
-            return call_inst2<Inst>(cpu);
+            return call<Inst>(cpu);
     }
 
     if constexpr (N < 0xFF)
@@ -113,75 +82,61 @@ std::size_t run_extendend_instruction_helper(int opcode, Cpu &cpu)
     return 0;
 }
 
-template<typename Inst>
-std::size_t call_inst(Cpu &cpu)
-{
-     auto data = fetch_instruction_data<Inst>(cpu);
-
-     cpu.last_inst_str = inst_to_str(Inst{}, cpu,data);
-
-     /*if constexpr (InstructionTraits<Inst>::opcode == 0xCB)
-     {
-         auto ext_opcode = data[1] | InstructionTraits<Inst>::opcode << 8;
-         return run_extendend_instruction_helper<>(ext_opcode, cpu);
-     }
-     else */if constexpr (Inst::ticks > 0)
-     {
-         call_inst_return<Inst>(cpu, data);
-         return Inst::ticks;
-     }
-     else
-     {
-         return call_inst_return<Inst>(cpu, data);
-     }
-}
 
 template<typename Inst>
-std::size_t call_inst_new_style(Cpu &cpu)
+std::size_t fetch_data_and_call(Cpu &cpu)
 {
-    if (InstructionTraits<Inst>::opcode == 0x18)
+    if (opcode_v<Inst> == 0x18)
     {
        // std::cout << "Break\n";
     }
 
-    auto data = fetch_instruction_data<Inst>(cpu);
-    if constexpr (Inst::usize > 1)
+    if constexpr (Inst::size > 1)
     {
-        cpu.arg1 = data[1];
+        cpu.arg1 = cpu.fetch_byte();
     }
 
-    if constexpr (Inst::usize > 2)
+    if constexpr (Inst::size > 2)
     {
-        cpu.arg2= data[2];
+        cpu.arg2= cpu.fetch_byte();
     }
 
-    if constexpr (InstructionTraits<Inst>::opcode == 0xCB)
+    if constexpr (opcode_v<Inst> == 0xCB)
     {
-        auto ext_opcode = data[1] | InstructionTraits<Inst>::opcode << 8;
+        auto ext_opcode = cpu.arg1 | opcode_v<Inst> << 8;
         return run_extendend_instruction_helper<>(ext_opcode, cpu);
     }
 
-    cpu.last_inst_str = inst_to_str(Inst{}, cpu, data);
-    return call_inst2<Inst>(cpu);
+    cpu.last_inst_str = inst_to_str(Inst{}, cpu);
+    return call<Inst>(cpu);
 }
 
 template<std::size_t N=0>
 std::size_t run_instruction_helper(int opcode, Cpu &cpu)
 {
-    if (opcode == N)
+    switch (opcode)
     {
-        using Inst = Instruction<N>;
-        if constexpr (Inst::new_style)
-        {
-            return call_inst_new_style<Inst>(cpu);
-        }
-        else
-        return call_inst<Inst>(cpu);
+        case N+0x0: return fetch_data_and_call<Instruction<N+0x0>>(cpu);
+        case N+0x1: return fetch_data_and_call<Instruction<N+0x1>>(cpu);
+        case N+0x2: return fetch_data_and_call<Instruction<N+0x2>>(cpu);
+        case N+0x3: return fetch_data_and_call<Instruction<N+0x3>>(cpu);
+        case N+0x4: return fetch_data_and_call<Instruction<N+0x4>>(cpu);
+        case N+0x5: return fetch_data_and_call<Instruction<N+0x5>>(cpu);
+        case N+0x6: return fetch_data_and_call<Instruction<N+0x6>>(cpu);
+        case N+0x7: return fetch_data_and_call<Instruction<N+0x7>>(cpu);
+        case N+0x8: return fetch_data_and_call<Instruction<N+0x8>>(cpu);
+        case N+0x9: return fetch_data_and_call<Instruction<N+0x9>>(cpu);
+        case N+0xA: return fetch_data_and_call<Instruction<N+0xA>>(cpu);
+        case N+0xB: return fetch_data_and_call<Instruction<N+0xB>>(cpu);
+        case N+0xC: return fetch_data_and_call<Instruction<N+0xC>>(cpu);
+        case N+0xD: return fetch_data_and_call<Instruction<N+0xD>>(cpu);
+        case N+0xE: return fetch_data_and_call<Instruction<N+0xE>>(cpu);
+        case N+0xF: return fetch_data_and_call<Instruction<N+0xF>>(cpu);
     }
 
     if constexpr (N < 0xFF)
     {
-        return run_instruction_helper<N+1>(opcode, cpu);
+        return run_instruction_helper<N+0x10>(opcode, cpu);
     }
 
     return 0;

@@ -144,92 +144,32 @@ std::uint16_t op_pop(Cpu &cpu)
     return result;
 }
 
-template<std::uint16_t OPCODE, std::int8_t SIZE, std::uint8_t TICKS, const char *MNEMONIC>
-struct InstructionBase
+template<std::size_t Size>
+struct Impl
 {
-    static constexpr std::uint16_t opcode = OPCODE;
-    static constexpr std::int16_t size = SIZE;
-    static constexpr std::uint16_t usize = SIZE > 0 ? SIZE : -SIZE;
-    static constexpr bool signed_arg = SIZE < 0;
-    static constexpr std::size_t ticks = TICKS;
-    static constexpr const char *mnemonic = MNEMONIC;
+    static constexpr std::uint8_t size = Size;
+};
 
-    static constexpr bool new_style = false;
+struct NotImplemented : Impl<0> {
+    using result_type = size_t;
+
+    static result_type execute(Cpu &) { throw std::runtime_error("Not impl instruction"); }
+    static std::string mnemonic(const Cpu &) {  return "INVALID"; }
 };
 
 template<std::uint16_t OPCODE>
-struct Instruction : InstructionBase<OPCODE, 0, 0, nullptr>{};
-
-
-template<typename Inst, typename Data>
-std::string inst_to_str(const Inst &inst, const Cpu &cpu, const Data &data)
+struct Instruction
 {
-    //std::cout << cpu.last_inst_str << std::endl;
-    std::ostringstream out;
+    static constexpr std::uint8_t size = 0;
+    static constexpr std::size_t ticks = 0;//TICKS;
+    static constexpr const char *mnemonic = "";
 
-    if constexpr (inst.usize == 0)
-    {
-        return "";
-    }
-    out << "[" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << int(data[0]);
-    if constexpr (inst.usize > 1)
-    {
-        out << " " << std::setw(2) << std::setfill('0') << int(data[1]);
-    }
-    else
-    {
-        out << "   ";
-    }
-    if constexpr (inst.usize > 2)
-    {
-        out << " " << std::setw(2) << std::setfill('0') << int(data[2]);
-    }
-    else
-    {
-        out << "   ";
-    }
-
-    out << "] ";
-
-    if constexpr (inst.usize > 0)
-    {
-        std::string raw_mnemonic = InstructionTraits<Inst>::mnemonic(cpu);
-        if (auto pos = raw_mnemonic.find('8'); pos != std::string::npos)
-        {
-            //raw_mnemonic.replace(pos-1, 2, "%02X");
-        }
-        if (auto pos = raw_mnemonic.find("16"); pos != std::string::npos)
-        {
-            //raw_mnemonic.replace(pos-1, 3, "%04X");
-        }
-
-        char mnemonic[20] = {0};
-        if constexpr (inst.usize == 1)
-        {
-            sprintf_s(mnemonic, "%s", raw_mnemonic.c_str());
-        }
-        if constexpr (inst.usize == 2)
-        {
-            sprintf_s(mnemonic, raw_mnemonic.c_str(), data[1]);
-        }
-        if constexpr (inst.usize == 3)
-        {
-            std::uint16_t param = data[1] | data[2] << 8;
-            sprintf_s(mnemonic, raw_mnemonic.c_str(), param);
-        }
-
-        out << mnemonic;
-    }
-
-    return out.str();
-}
+    static constexpr bool new_style = false;
+    using impl_type = NotImplemented;
+    using result_type = typename impl_type::result_type;
+};
 
 
-#define INST(OPCODE, MNEMONIC, SIZE, TICKS, ...)                                           \
-static char INST_ ## OPCODE[] = MNEMONIC;                                                   \
-template<> struct Instruction<OPCODE> : InstructionBase<OPCODE, SIZE, TICKS, INST_ ## OPCODE> {\
-     }; \
-std::conditional_t<TICKS==0,std::size_t,void> call(Instruction<OPCODE>, __VA_ARGS__)
 
 #define INST(OPCODE, MNEMONIC, SIZE, TICKS, ...) \
     std::conditional_t<TICKS==0,std::size_t,void> call ## OPCODE(__VA_ARGS__)
@@ -237,9 +177,8 @@ std::conditional_t<TICKS==0,std::size_t,void> call(Instruction<OPCODE>, __VA_ARG
 template<std::int8_t SIZE, std::uint8_t TICKS, typename Impl>
 struct Inst {
 
-    static constexpr std::int16_t size = SIZE;
-    static constexpr std::uint16_t usize = size > 0 ? size : -size;
-    static constexpr bool signed_arg = size < 0;
+    //static_assert(SIZE == Impl::size);
+    static constexpr std::uint8_t size = SIZE;
     static constexpr std::size_t ticks = TICKS;
 
     using impl_type = Impl;
@@ -252,6 +191,7 @@ struct Inst {
 template<typename T, T CpuRegisters::*Ptr, char MN1, char MN2=0>
 struct Reg {
     using data_type = T;
+    static constexpr std::uint8_t size = 0;
 
     static data_type read_data(const Cpu &cpu) {
         //std::cout << "Reading " << std::hex << int(cpu.registers.*Ptr) << " from " << to_string(0) << std::endl;
@@ -284,6 +224,7 @@ struct SP : Reg<std::uint16_t, &CpuRegisters::sp, 'S', 'P'> {};
 struct Im16
 {
     using data_type = std::uint16_t;
+    static constexpr std::uint8_t size = sizeof(data_type);
 
     static data_type read_data(const Cpu &cpu)
     {
@@ -309,6 +250,7 @@ template<typename T>
 struct Im8
 {
     using data_type = T;
+    static constexpr std::uint8_t size = sizeof (data_type);
 
     static data_type read_data(const Cpu &cpu)
     {
@@ -330,6 +272,7 @@ struct r8 : Im8<std::int8_t> {};
 struct SP_r8
 {
     using data_type = std::uint16_t;
+    static constexpr std::uint8_t size = 1;
 
     static data_type read_data(Cpu &cpu)
     {
@@ -429,6 +372,7 @@ template<typename Loc, char Op=0>
 struct At
 {
     using data_type = std::uint8_t;
+    static constexpr std::uint8_t size = Loc::size;
 
     static data_type read_data(Cpu &cpu)
     {
@@ -495,6 +439,7 @@ template<typename Loc>
 struct At16
 {
     using data_type = std::uint16_t;
+    static constexpr std::uint8_t size = Loc::size;
 
     static data_type read_data(Cpu &cpu)
     {
@@ -515,14 +460,21 @@ struct At16
     }
 };
 
-struct NOP{
+struct INVALID : Impl<0> {
+    using result_type = void;
+
+    static void execute(Cpu &) { throw std::runtime_error("Invalid instruction"); }
+    static std::string mnemonic(const Cpu &) {  return "INVALID"; }
+};
+
+struct NOP : Impl<1> {
     using result_type = void;
 
     static void execute(Cpu &) { }
     static std::string mnemonic(const Cpu &) {  return "NOP"; }
 };
 
-struct STOP{
+struct STOP : Impl<2> {
     using result_type = void;
 
     static void execute(Cpu &) { }
@@ -555,7 +507,7 @@ struct EI{
 };
 
 template<typename Dst, typename Src>
-struct LD
+struct LD : Impl<1+Dst::size+Src::size>
 {
     using result_type = void;
 
@@ -682,7 +634,7 @@ struct RET
 };
 
 template<std::uint16_t Addr>
-struct RST
+struct RST : Impl<1>
 {
     using result_type = void;
 
@@ -700,7 +652,7 @@ struct RST
     }
 };
 
-struct RETI
+struct RETI : Impl<1>
 {
     using result_type = void;
 
@@ -768,7 +720,7 @@ struct XOR
     }
 };
 
-struct CPL
+struct CPL : Impl<1>
 {
     using result_type = void;
 
@@ -783,13 +735,13 @@ struct CPL
     }
 };
 
-struct RLCA
+struct RLCA : Impl<1>
 {
     using result_type = void;
 
     static void execute(Cpu &cpu) {
         auto value = cpu.registers.a;
-        bool c_flag = (value >> 7) & 1;
+        int c_flag = (value >> 7) & 1;
 
         cpu.registers.f = 0;
         cpu.registers.flags.c = c_flag;
@@ -802,7 +754,7 @@ struct RLCA
     }
 };
 
-struct RRCA
+struct RRCA : Impl<1>
 {
     using result_type = void;
 
@@ -820,7 +772,25 @@ struct RRCA
     }
 };
 
-struct RRA
+struct RLA : Impl<1>
+{
+    using result_type = void;
+
+    static void execute(Cpu &cpu) {
+        std::uint8_t value = cpu.registers.a ;
+        std::uint8_t carry = cpu.registers.flags.c ? 1 : 0;
+
+        cpu.registers.a = (value << 1) | carry;
+        cpu.registers.f = 0;
+        cpu.registers.flags.c = (value >> 7) & 1;
+    }
+
+    static std::string mnemonic(const Cpu &cpu) {
+        return "RLA";
+    }
+};
+
+struct RRA : Impl<1>
 {
     using result_type = void;
 
@@ -837,7 +807,7 @@ struct RRA
 };
 
 template<typename Op>
-struct INC
+struct INC : Impl<1>
 {
     using result_type = void;
 
@@ -859,7 +829,7 @@ struct INC
 };
 
 template<typename Op>
-struct DEC
+struct DEC : Impl<1>
 {
     using result_type = void;
 
@@ -910,7 +880,7 @@ struct CP
 
 
 template<typename Dst, typename Src>
-struct ADD
+struct ADD : Impl<1+Dst::size+Src::size>
 {
     using result_type = void;
 
@@ -1006,33 +976,15 @@ struct SWAP
 };
 
 template<typename Inst>
-struct InstructionTraits;
+inline constexpr std::uint16_t opcode_v=0;
 
 template<std::uint16_t OpCode>
-struct InstructionTraits<Instruction<OpCode>>
-{
-    using inst_type = Instruction<OpCode>;
-    static constexpr std::int16_t opcode = OpCode;
-
-    static std::string mnemonic(const Cpu &cpu)
-    {
-        if constexpr (inst_type::new_style)
-        {
-            using Impl = typename inst_type::impl_type;
-            return  Impl::mnemonic(cpu);
-        }
-        else
-        {
-            return inst_type::mnemonic;
-        }
-    }
-};
-
+inline constexpr std::uint16_t opcode_v<Instruction<OpCode>> = OpCode;
 
 template<typename Inst>
-typename std::size_t call_inst2(Cpu &cpu)
+typename std::size_t call(Cpu &cpu)
 {
-    if constexpr (InstructionTraits<Inst>::opcode == 0x02
+    if constexpr (opcode_v<Inst> == 0x02
                //|| InstructionTraits<Inst>::opcode == 0xC4
                  )
     {
@@ -1070,7 +1022,6 @@ template<> struct Instruction<0x0D> : Inst<1,  4, DEC<C>> {};
 template<> struct Instruction<0x0E> : Inst<2,  8, LD<C,d8>> {};
 template<> struct Instruction<0x0F> : Inst<1,  4, RRCA> {};
 
-
 template<> struct Instruction<0x10> : Inst<2,  4, STOP> {};
 template<> struct Instruction<0x11> : Inst<3, 12, LD<DE,d16>> {};
 template<> struct Instruction<0x12> : Inst<1,  8, LD<At<DE>, A>> {};
@@ -1078,7 +1029,7 @@ template<> struct Instruction<0x13> : Inst<1,  8, INC<DE>> {};
 template<> struct Instruction<0x14> : Inst<1,  4, INC<D>> {};
 template<> struct Instruction<0x15> : Inst<1,  4, DEC<D>> {};
 template<> struct Instruction<0x16> : Inst<2,  8, LD<D,d8>> {};
-//INST(0x17, "RLA",         1,  4, nullptr };
+template<> struct Instruction<0x17> : Inst<1,  4, RLA> {};
 template<> struct Instruction<0x18> : Inst<2, 12, JR<Always,r8>> {};
 template<> struct Instruction<0x19> : Inst<1,  8, ADD<HL,DE>> {};
 template<> struct Instruction<0x1A> : Inst<1,  8, LD<A,At<DE>>> {};
@@ -1087,7 +1038,6 @@ template<> struct Instruction<0x1C> : Inst<1,  4, INC<E>> {};
 template<> struct Instruction<0x1D> : Inst<1,  4, DEC<E>> {};
 template<> struct Instruction<0x1E> : Inst<2,  8, LD<E,d8>> {};
 template<> struct Instruction<0x1F> : Inst<1,  4, RRA> {};
-
 
 template<> struct Instruction<0x20> : Inst<2,  0, JR<FlagNotZ,r8>> {};
 template<> struct Instruction<0x21> : Inst<3, 12, LD<HL,d16>> {};
@@ -1120,6 +1070,7 @@ template<> struct Instruction<0x3B> : Inst<1,  8, DEC<SP>> {};
 template<> struct Instruction<0x3C> : Inst<1,  4, INC<A>> {};
 template<> struct Instruction<0x3D> : Inst<1,  4, DEC<A>> {};
 template<> struct Instruction<0x3E> : Inst<2,  8, LD<A,d8>> {};
+//0x3F CCF 1  4 - 0 0 C
 
 template<> struct Instruction<0x40> : Inst<1, 4, LD<B,B>> {};
 template<> struct Instruction<0x41> : Inst<1, 4, LD<B,C>> {};
@@ -1178,6 +1129,7 @@ template<> struct Instruction<0x72> : Inst<1, 8, LD<At<HL>,D>> {};
 template<> struct Instruction<0x73> : Inst<1, 8, LD<At<HL>,E>> {};
 template<> struct Instruction<0x74> : Inst<1, 8, LD<At<HL>,H>> {};
 template<> struct Instruction<0x75> : Inst<1, 8, LD<At<HL>,L>> {};
+//0x75 HALT 1  4
 template<> struct Instruction<0x77> : Inst<1, 8, LD<At<HL>,A>> {};
 template<> struct Instruction<0x78> : Inst<1, 4, LD<A,B>> {};
 template<> struct Instruction<0x79> : Inst<1, 4, LD<A,C>> {};
@@ -1205,7 +1157,22 @@ INST(0x8D, "ADC A, L",    1,  4, Cpu &cpu){ op_adc(cpu, cpu.registers.a, cpu.reg
 INST(0x8E, "ADC A, (HL)", 1,  8, Cpu &cpu){ op_adc(cpu, cpu.registers.a, cpu.bus[cpu.registers.hl]); }
 INST(0x8F, "ADC A, A",    1,  4, Cpu &cpu){ op_adc(cpu, cpu.registers.a, cpu.registers.a); }
 
+template<> struct Instruction<0x90> : Inst<1, 4, SUB<B>> {};
 template<> struct Instruction<0x91> : Inst<1, 4, SUB<C>> {};
+template<> struct Instruction<0x92> : Inst<1, 4, SUB<D>> {};
+template<> struct Instruction<0x93> : Inst<1, 4, SUB<E>> {};
+template<> struct Instruction<0x94> : Inst<1, 4, SUB<H>> {};
+template<> struct Instruction<0x95> : Inst<1, 4, SUB<L>> {};
+template<> struct Instruction<0x96> : Inst<1, 8, SUB<At<HL>>> {};
+template<> struct Instruction<0x97> : Inst<1, 4, SUB<A>> {};
+//template<> struct Instruction<0x98> : Inst<1, 4, SBC_A<B>> {};
+//template<> struct Instruction<0x99> : Inst<1, 4, SBC_A<C>> {};
+//template<> struct Instruction<0x9A> : Inst<1, 4, SBC_A<D>> {};
+//template<> struct Instruction<0x9B> : Inst<1, 4, SBC_A<E>> {};
+//template<> struct Instruction<0x9C> : Inst<1, 4, SBC_A<H>> {};
+//template<> struct Instruction<0x9D> : Inst<1, 4, SBC_A<L>> {};
+//template<> struct Instruction<0x9E> : Inst<1, 8, SBC_A<At<HL>>> {};
+//template<> struct Instruction<0x9F> : Inst<1, 4, SBC_A<A>> {};
 
 template<> struct Instruction<0xA0> : Inst<1,  4, AND<B>> {};
 template<> struct Instruction<0xA1> : Inst<1,  4, AND<C>> {};
@@ -1261,6 +1228,7 @@ template<> struct Instruction<0xCF> : Inst<1, 16, RST<0x08>> {};
 template<> struct Instruction<0xD0> : Inst<1,  0, RET<FlagNotC>> {};
 template<> struct Instruction<0xD1> : Inst<1, 12, POP<DE>> {};
 template<> struct Instruction<0xD2> : Inst<3,  0, JP<FlagNotC,a16>> {};
+template<> struct Instruction<0xD3> : Inst<1,  4, INVALID> {};
 template<> struct Instruction<0xD4> : Inst<3,  0, CALL<FlagNotC,a16>> {};
 template<> struct Instruction<0xD5> : Inst<1, 16, PUSH<DE>> {};
 template<> struct Instruction<0xD6> : Inst<2,  8, SUB<d8>> {};
@@ -1268,23 +1236,34 @@ template<> struct Instruction<0xD7> : Inst<1, 16, RST<0x10>> {};
 template<> struct Instruction<0xD8> : Inst<1,  0, RET<FlagC>> {};
 template<> struct Instruction<0xD9> : Inst<1, 16, RETI> {};
 template<> struct Instruction<0xDA> : Inst<3,  0, JP<FlagC,a16>> {};
+template<> struct Instruction<0xDB> : Inst<1,  4, INVALID> {};
 template<> struct Instruction<0xDC> : Inst<3,  0, CALL<FlagC,a16>> {};
+template<> struct Instruction<0xDD> : Inst<1,  4, INVALID> {};
+//template<> struct Instruction<0xDE> : Inst<2, 8, SBC_A<d8>> {};
 template<> struct Instruction<0xDF> : Inst<1, 16, RST<0x18>> {};
 
 template<> struct Instruction<0xE0> : Inst<2, 12, LD<At<a8>, A>> {};
 template<> struct Instruction<0xE1> : Inst<1, 12, POP<HL>> {};
 template<> struct Instruction<0xE2> : Inst<1,  8, LD<At<C>,A>> {};
+template<> struct Instruction<0xE3> : Inst<1,  4, INVALID> {};
+template<> struct Instruction<0xE4> : Inst<1,  4, INVALID> {};
 template<> struct Instruction<0xE5> : Inst<1, 16, PUSH<HL>> {};
 template<> struct Instruction<0xE6> : Inst<2,  8, AND<d8>> {};
 template<> struct Instruction<0xE7> : Inst<1, 16, RST<0x20>> {};
+//0xE8 ADD SP, r8 2  16 0 0 H C
 template<> struct Instruction<0xE9> : Inst<1,  4, JP<Always,HL>> {};
 template<> struct Instruction<0xEA> : Inst<3, 12, LD<At<a16>, A>> {};
+template<> struct Instruction<0xEB> : Inst<1,  4, INVALID> {};
+template<> struct Instruction<0xEC> : Inst<1,  4, INVALID> {};
+template<> struct Instruction<0xED> : Inst<1,  4, INVALID> {};
 template<> struct Instruction<0xEE> : Inst<2,  8, XOR<d8>> {};
 template<> struct Instruction<0xEF> : Inst<1, 16, RST<0x28>> {};
 
 template<> struct Instruction<0xF0> : Inst<2, 12, LD<A, At<a8>>> {};
 template<> struct Instruction<0xF1> : Inst<1, 12, POP<AF>> {};
+template<> struct Instruction<0xF2> : Inst<1,  8, LD<A, At<C>>> {};
 template<> struct Instruction<0xF3> : Inst<1,  4, DI> {};
+template<> struct Instruction<0xF4> : Inst<1,  4, INVALID> {};
 template<> struct Instruction<0xF5> : Inst<1, 16, PUSH<AF>> {};
 template<> struct Instruction<0xF6> : Inst<2,  8, OR<d8>> {};
 template<> struct Instruction<0xF7> : Inst<1, 16, RST<0x30>> {};
@@ -1292,6 +1271,8 @@ template<> struct Instruction<0xF8> : Inst<2, 12, LD<HL,SP_r8>> {};//0 0 H C
 template<> struct Instruction<0xF9> : Inst<1,  8, LD<SP, HL>> {};
 template<> struct Instruction<0xFA> : Inst<3, 16, LD<A,At<a16>>> {};
 template<> struct Instruction<0xFB> : Inst<1,  4, EI> {};
+template<> struct Instruction<0xFC> : Inst<1,  4, INVALID> {};
+template<> struct Instruction<0xFD> : Inst<1,  4, INVALID> {};
 template<> struct Instruction<0xFE> : Inst<2,  8, CP<d8>> {};
 template<> struct Instruction<0xFF> : Inst<1, 16, RST<0x38>> {};
 
