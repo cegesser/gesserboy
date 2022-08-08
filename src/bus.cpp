@@ -43,8 +43,8 @@ const char *cartridge_type(const CartridgeHeader *header)
 
 void print_header(const CartridgeHeader *header)
 {
-    std::cout << "Title    : " << header->title  << std::endl;
-    std::cout << "Type     : " << int(header->cartridge_type) << ": " << cartridge_type(header) << std::endl;
+    //std::cout << "Title    : " << header->title  << std::endl;
+    //std::cout << "Type     : " << int(header->cartridge_type) << ": " << cartridge_type(header) << std::endl;
     std::cout << "ROM Size : " << (32 << header->rom_size) << " KBytes"  << std::endl;
     std::cout << "RAM Size : " << int(header->ram_size) << std::endl;
 }
@@ -118,83 +118,100 @@ Bus::Ref &Bus::Ref::operator=(uint8_t value)
         std::cout << "Writing to " << std::hex << address << ": " << (int)value << std::endl;
     switch (address)
     {
-    case 0xFF00: bus.p1_joypad = value; break;
-    case 0xFF01: serial_transfer_data_write(value); break;
-    case 0xFF02: serial_transfer_control_write(value); break;
-    case 0xFF04: bus.timer.divider = 0; break;
-    case 0xFF05: bus.timer.counter = value; break;
-    case 0xFF06: bus.timer.modulo = value; break;
-    case 0xFF07: bus.timer.control = value; break;
-    case 0xFF0F: bus.interrupts_flags = value; break;
-    case 0xFFFF: bus.interrupts_enable = value; break;
+    case 0xFF00: bus.p1_joypad = value; return *this;
+    case 0xFF01: serial_transfer_data_write(value); return *this;
+    case 0xFF02: serial_transfer_control_write(value); return *this;
+    case 0xFF04: bus.timer.divider = 0; return *this;
+    case 0xFF05: bus.timer.counter = value; return *this;
+    case 0xFF06: bus.timer.modulo = value; return *this;
+    case 0xFF07: bus.timer.control = value; return *this;
+    case 0xFF0F: bus.interrupt_triggered_register = value; return *this;
+    case 0xFFFF: bus.interrupt_enable_register = value; return *this;
+    }
 
-    default: if (address <= 0x7FFF)
+    if (address <= 0x7FFF)
+    {
+        if (1 <= bus.cart.header->cartridge_type && bus.cart.header->cartridge_type <= 3)
         {
-            if (1 <= bus.cart.header->cartridge_type && bus.cart.header->cartridge_type <= 3)
-            {
-                std::ostringstream out;
-                out << "Writing to " << std::hex << address << " not yet implemented";
-                //throw std::runtime_error(out.str());
-            }
-            //else ignore
-        }
-        else if (0x8000 <= address && address <= 0x9FFF)
-        {
-            bus.ppu.video_ram[address - 0x8000] = value;
-        }
-        else if (0xA000 <= address && address <= 0xBFFF)
-        {
-            bus.cartridge_ram[address - 0xA000] = value;
-        }
-        else if (0xC000 <= address && address <= 0xDFFF)
-        {
-            bus.work_ram[address - 0xC000] = value;
-        }
-        else if (0xE000 <= address && address <= 0xFDFF)
-        {
-            bus.work_ram[address - 0xE000] = value;
-        }
-        else if (0xFE00 <= address  && address <= 0xFEFF)
-        {
-            bus.obj_attribute_memory[address - 0xFE00] = value;
-        }
-        else if (0xFF40 <= address && address <= 0xFF4B)
-        {
-            bus.ppu.write(address, value);
-        }
-        else if (address == 0xFF7F)
-        {
-            std::cout << "Writing at " << std::hex << address << " " << (int)value << std::endl;;
-            //throw std::logic_error("");
-        }
-        else if (0xFF10 <= address && address <= 0xFF26)
-        {
-            std::cout << "Writing to sound register " << std::hex <<  (address - 0xFF10) << std::endl;
-        }
-        else if (0xFF80 <= address && address <= 0xFFFE)
-        {
-            if (address == 0xFF80)
-            {
-                std::ostringstream out;
-                out << "Writing to " << std::hex << address << ": " << (int)value ;
-                std::cerr << out.str() << std::endl;
-//                throw std::logic_error(out.str());
-            }
-            bus.high_ram[address - 0xFF80] = value;
-        }
-        else
-        {
-            if (address == 0xff71)
-            {
-                std::cout << "Writing from FF71 " << (int)value << std::endl;
-                return *this;;
-            }
-
             std::ostringstream out;
             out << "Writing to " << std::hex << address << " not yet implemented";
             //throw std::runtime_error(out.str());
         }
+        return *this;
+        //else ignore
     }
+
+    if (0x8000 <= address && address <= 0x9FFF)
+    {
+        bus.ppu.video_ram[address - 0x8000] = value;
+        return *this;
+    }
+
+    if (0xA000 <= address && address <= 0xBFFF)
+    {
+        bus.cartridge_ram[address - 0xA000] = value;
+        return *this;
+    }
+
+    if (0xC000 <= address && address <= 0xDFFF)
+    {
+        bus.work_ram[address - 0xC000] = value;
+        return *this;
+    }
+
+    if (0xE000 <= address && address <= 0xFDFF)
+    {
+        bus.work_ram[address - 0xE000] = value;
+        return *this;
+    }
+
+    if (0xFE00 <= address  && address <= 0xFEFF)
+    {
+        bus.ppu.obj_attribute_memory[address - 0xFE00] = value;
+        return *this;
+    }
+
+    if (0xFF40 <= address && address <= 0xFF4B)
+    {
+        //bus.ppu.write(address, value);
+        return *this;
+    }
+
+    if (address == 0xFF7F)
+    {
+        std::cout << "Writing at " << std::hex << address << " " << (int)value << std::endl;;
+        //throw std::logic_error("");
+        return *this;
+    }
+
+    if (0xFF10 <= address && address <= 0xFF26)
+    {
+        std::cout << "Writing to sound register " << std::hex <<  (address - 0xFF10) << std::endl;
+        return *this;
+    }
+
+    if (0xFF80 <= address && address <= 0xFFFE)
+    {
+        if (address == 0xFF80)
+        {
+            std::ostringstream out;
+            out << "Writing to " << std::hex << address << ": " << (int)value ;
+            std::cerr << out.str() << std::endl;
+            //                throw std::logic_error(out.str());
+        }
+        bus.high_ram[address - 0xFF80] = value;
+        return *this;
+    }
+
+    if (address == 0xff71)
+    {
+        std::cout << "Writing from FF71 " << (int)value << std::endl;
+        return *this;;
+    }
+
+    std::ostringstream out;
+    out << "Writing to " << std::hex << address << " not yet implemented";
+    //throw std::runtime_error(out.str());
 
     return *this;
 }
@@ -214,8 +231,8 @@ std::uint8_t read_from_address(const Bus &bus, std::uint16_t address)
     case 0xFF05: return bus.timer.counter;
     case 0xFF06: return bus.timer.modulo;
     case 0xFF07: return bus.timer.control;
-    case 0xFF0F: return bus.interrupts_flags;
-    case 0xFFFF: return bus.interrupts_enable;
+    case 0xFF0F: return bus.interrupt_triggered_register;
+    case 0xFFFF: return bus.interrupt_enable_register;
     }
 
     if (address <= 0x7FFF)
@@ -243,14 +260,14 @@ std::uint8_t read_from_address(const Bus &bus, std::uint16_t address)
         return bus.work_ram[address - 0xE000];
     }
 
-    if (0xFE00 <= address  && address <= 0xFEFF)
+    if (0xFE00 <= address  && address <= 0xFE9F)
     {
-        return bus.obj_attribute_memory[address - 0xFE00];
+        return bus.ppu.obj_attribute_memory[address - 0xFE00];
     }
 
     if (0xFF40 <= address && address <= 0xFF4B)
     {
-        return bus.ppu.read(address);
+        //return bus.ppu.read(address);
     }
 
     if (0xFF80 <= address && address <= 0xFFFE)
@@ -285,14 +302,226 @@ Bus::Ref::operator std::uint8_t() const
 
 
 
-bool Bus::int_trigger(IntType interrupt)
+void Bus::trigger_interrupt(InterruptFlag interrupt)
 {
-    if (interrupts_enable & interrupt)
+    const auto interrupts_enabled = read(0xFFFF);
+    if (interrupts_enabled & int(interrupt))
     {
-        interrupts_flags |= interrupts_flags;
-        return true;
+        const auto interrupts_triggered = read(0xFF0F);
+        write(0xFF0F, interrupts_triggered | int(interrupt));
     }
-    return false;
+}
+
+
+
+uint8_t Bus::read(std::uint16_t address)
+{
+    if (address == 0xff04)
+    {
+        //_CrtDbgBreak();
+    }
+
+    //return Ref{*this, address};
+    //0000	3FFF	16 KiB ROM bank 00	From cartridge, usually a fixed bank
+    if (address <= 0x3FFF)
+    {
+        return cart.data[address];
+    }
+    //4000	7FFF	16 KiB ROM Bank 01~NN	From cartridge, switchable bank via mapper (if any)
+    if (0x4000 <= address && address <= 0x7FFF)
+    {
+        return cart.data[address];
+    }
+    //8000	9FFF	8 KiB Video RAM (VRAM)	In CGB mode, switchable bank 0/1
+    if (0x8000 <= address && address <= 0x9FFF)
+    {
+        return ppu.video_ram[address - 0x8000];
+    }
+    //A000	BFFF	8 KiB External RAM	From cartridge, switchable bank if any
+    //C000	CFFF	4 KiB Work RAM (WRAM)
+    if (0xC000 <= address && address <= 0xCFFF)
+    {
+        return work_ram1[address-0xC000];
+    }
+    //D000	DFFF	4 KiB Work RAM (WRAM)	In CGB mode, switchable bank 1~7
+    if (0xD000 <= address && address <= 0xDFFF)
+    {
+        return work_ram2[address-0xD000];
+    }
+    //E000	FDFF	Mirror of C000~DDFF (ECHO RAM)	Nintendo says use of this area is prohibited.
+    if (0xE000 <= address && address <= 0xFDFF)
+    {
+        return read(address - 0x2000);
+    }
+    //FE00	FE9F	Sprite attribute table (OAM)
+    //FEA0	FEFF	Not Usable	Nintendo says use of this area is prohibited
+    //FF00	FF7F	I/O Registers
+    if (0xFF00 <= address && address <= 0xFF7F)
+    {
+        //$FF00		DMG	Joypad input
+        if (address == 0xFF00)
+            return /*p1_joypad */ 0xCF;
+        //$FF01	$FF02	DMG	Serial transfer
+        if (address == 0xFF01) return serial_transfer_data_read();
+        if (address == 0xFF02) return serial_transfer_control_read();
+
+        //$FF04	$FF07	DMG	Timer and divider
+        //$FF10	$FF26	DMG	Sound
+        //$FF30	$FF3F	DMG	Wave pattern
+        //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
+        if (address == 0xFF40) return ppu.read(address);
+        if (address == 0xFF44) return ppu.read(address);
+        if (address == 0xFF4D) return 0xFF; //FF4D - KEY1 - CGB Mode Only - Prepare Speed Switch
+        //$FF4F		CGB	VRAM Bank Select
+        //$FF50		DMG	Set to non-zero to disable boot ROM
+        //$FF51	$FF55	CGB	VRAM DMA
+        //$FF68	$FF69	CGB	BG / OBJ Palettes
+        //$FF70		CGB	WRAM Bank Select
+
+        if (address == 0xFF0F) return interrupt_triggered_register;
+
+        //return io_range[address-0xFF00];
+    }
+    //FF80	FFFE	High RAM (HRAM)
+    if (0xFF80 <= address && address <= 0xFFFE)
+    {
+        return high_ram[address-0xFF80];
+    }
+    //FFFF	FFFF	Interrupt Enable register (IE)
+    if (0xFFFF <= address && address <= 0xFFFF)
+    {
+        return interrupt_enable_register;
+    }
+
+    std::ostringstream out;
+    out <<  "Reading from " << std::hex << address << " not yet implemented";
+    throw std::runtime_error(out.str());
+    return 0;
+}
+
+void Bus::write(uint16_t address, uint8_t value)
+{
+    //Ref{*this, address} = value; return;
+
+    if (address == 0xff04)
+    {
+       // _CrtDbgBreak();
+    }
+
+    //0000	3FFF	16 KiB ROM bank 00	From cartridge, usually a fixed bank
+    if (0x0000 <= address && address  <= 0x3FFF)
+    {
+        cart.data[address] = value;
+        return;
+    }
+    //4000	7FFF	16 KiB ROM Bank 01~NN	From cartridge, switchable bank via mapper (if any)
+    if (0x4000 <= address && address  <= 0x7FFF)
+    {
+        cart.data[address] = value;
+        return;
+    }
+    //8000	9FFF	8 KiB Video RAM (VRAM)	In CGB mode, switchable bank 0/1
+    if (0x8000 <= address && address <= 0x9FFF)
+    {
+        ppu.video_ram[address - 0x8000] = value;
+        return;
+    }
+    //A000	BFFF	8 KiB External RAM	From cartridge, switchable bank if any
+    //C000	CFFF	4 KiB Work RAM (WRAM)
+    if (0xC000 <= address && address <= 0xCFFF)
+    {
+        work_ram1[address-0xC000] = value;
+        return;
+    }
+    //D000	DFFF	4 KiB Work RAM (WRAM)	In CGB mode, switchable bank 1~7
+    if (0xD000 <= address && address <= 0xDFFF)
+    {
+        work_ram2[address-0xD000] = value;
+        return;
+    }
+    //E000	FDFF	Mirror of C000~DDFF (ECHO RAM)	Nintendo says use of this area is prohibited.
+    if (0xE000 <= address && address <= 0xFDFF)
+    {
+        write(address - 0x2000, value);
+        return;
+    }
+    //FE00	FE9F	Sprite attribute table (OAM)
+    if (0xFE00 <= address  && address <= 0xFE9F)
+    {
+        ppu.obj_attribute_memory[address - 0xFE00] = value;
+        return;
+    }
+    //FEA0	FEFF	Not Usable	Nintendo says use of this area is prohibited
+    if (0xFEA0 <= address  && address <= 0xFEFF)
+    {
+        //std::cout << "Writing to forbidden zone at " << std::hex << address << ": " << (int)value << "\n";
+        return;
+    }
+    //FF00	FF7F	I/O Registers
+    if (0xFF00 <= address && address <= 0xFF7F)
+    {
+        //$FF00		DMG	Joypad input
+        if (address == 0xFF00) {
+            p1_joypad = value; return; }
+        //$FF01	$FF02	DMG	Serial transfer
+        if (address == 0xFF01) { serial_transfer_data_write(value); return; }
+        if (address == 0xFF02) { serial_transfer_control_write(value); return; }
+
+        //$FF04	$FF07	DMG	Timer and divider
+        if (address == 0xFF05) { timer.counter = value; return; }
+        if (address == 0xFF06) { timer.modulo  = value; return; }
+        if (address == 0xFF07) { timer.control = value; return; }
+
+        if (address == 0xFF0F) { interrupt_triggered_register = value; return; }
+
+        //$FF10	$FF26	DMG	Sound
+        if (0xFF10 <= address && address <= 0xFF26) { return; }
+        //$FF30	$FF3F	DMG	Wave pattern
+        if (0xFF30 <= address && address <= 0xFF3F) { return; }
+        //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
+
+        if (address == 0xFF40) { ppu.write(address, value); return; }
+        if (address == 0xFF41) { ppu.write(address, value); return; }
+        if (address == 0xFF42) { ppu.write(address, value); return; }
+        if (address == 0xFF43) { ppu.write(address, value); return; }
+        if (address == 0xFF46) { ppu.write(address, value); return; }
+        if (address == 0xFF47) { ppu.write(address, value); return; }
+        if (address == 0xFF48) { ppu.write(address, value); return; }
+        if (address == 0xFF49) { ppu.write(address, value); return; }
+        if (address == 0xFF4A) { ppu.write(address, value); return; }
+        if (address == 0xFF4B) { ppu.write(address, value); return; }
+
+        //$FF4F		CGB	VRAM Bank Select
+        //$FF50		DMG	Set to non-zero to disable boot ROM
+        //$FF51	$FF55	CGB	VRAM DMA
+        //$FF68	$FF69	CGB	BG / OBJ Palettes
+        //$FF70		CGB	WRAM Bank Select
+
+
+
+        if (address == 0xFF4d) return;
+        if (address == 0xFF7F) { return; }//Mistery
+        //io_range[address-0xFF00] = value;
+        //return;
+    }
+    //FF80	FFFE	High RAM (HRAM)
+    if (0xFF80 <= address && address <= 0xFFFE)
+    {
+        high_ram[address-0xFF80] = value;
+        //if (address == 0xffe3) throw std::logic_error("");
+        return;
+    }
+    //FFFF	FFFF	Interrupt Enable register (IE)
+    if (address == 0xFFFF)
+    {
+        std::cout << "int en "<< std::hex << (int)interrupt_enable_register << std::endl;
+        interrupt_enable_register = value;
+        return;
+    }
+
+    std::ostringstream out;
+    out <<  "Write to " << std::hex << address << " not yet implemented";
+    throw std::runtime_error(out.str());
 }
 
 void Bus::run_timer_once()
@@ -324,7 +553,7 @@ void Bus::run_timer_once()
         if (timer.counter == 0xFF) {
             timer.counter = timer.modulo;
 
-            this->int_trigger(int_TIMER);
+            this->trigger_interrupt(InterruptFlag::TIMER);
         }
     }
 }

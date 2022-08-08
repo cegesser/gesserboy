@@ -29,19 +29,22 @@ public:
 
     // 0x8000 - 0x97FF : CHR RAM
     std::uint8_t video_ram[0x2000];
+    // 0xFE00 - 0xFE9F : Object Attribute Memory
+    std::uint8_t obj_attribute_memory[0x100];
 
     //FF40
     union {
         std::uint8_t value;
         struct {
-            bool lcd_ppu_enable : 1;
-            std::uint8_t window_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
-            bool window_enable : 1;
-            std::uint8_t bg_window_tile_map_area : 1; //0=8800-97FF, 1=8000-8FFF
-            std::uint8_t bg_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
-            std::uint8_t obj_size : 1; //0=8x8, 1=8x16
-            bool obj_enable : 1;
             bool bg_window_priority : 1;
+            bool obj_enable : 1;
+            std::uint8_t obj_size : 1; //0=8x8, 1=8x16
+            std::uint8_t bg_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
+            std::uint8_t bg_window_tile_map_area : 1; //0=8800-97FF, 1=8000-8FFF
+            bool window_enable : 1;
+            std::uint8_t window_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
+
+            bool lcd_ppu_enable : 1;
         };
     } lcd_control;
 

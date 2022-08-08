@@ -13,7 +13,7 @@ public:
     Cpu cpu;
     Ppu ppu;
 
-
+    std::vector<std::string> log;
 
     std::string serial_output;
 

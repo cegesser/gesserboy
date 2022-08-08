@@ -11,7 +11,7 @@
 // Override base class with your custom functionality
 class GesserBoy : public olc::PixelGameEngine
 {
-    bool running = false;
+    bool running = true;
     bool stepping = false;
 
     System gboy;
@@ -21,19 +21,26 @@ class GesserBoy : public olc::PixelGameEngine
 
 public:
     GesserBoy()
-        //: gboy("roms/Tetris.gb")
+        : gboy("roms/Tetris.gb")
+        //: gboy("roms/Dr. Mario.gb")
+        //: gboy("roms/Metroid II.gb")
         //: gboy("roms/Zelda.gb")
         //: gboy("roms/Star Wars.gb")
         //: gboy("roms/cpu_instrs.gb")
-        //: gboy("roms/individual/06-ld r,r.gb")
-        : gboy("roms/individual/07-jr,jp,call,ret,rst.gb")
+        //: gboy("roms/individual/01-special.gb")
+        //: gboy("roms/individual/02-interrupts.gb") //passed
+        //: gboy("roms/individual/03-op sp,hl.gb") //
+        //: gboy("roms/individual/04-op r,imm.gb") //passed
+        //: gboy("roms/individual/05-op rp.gb") //passed
+        //: gboy("roms/individual/06-ld r,r.gb") //passed
+        //: gboy("roms/individual/07-jr,jp,call,ret,rst.gb")  //passed
+        //: gboy("roms/individual/08-misc instrs.gb") //passed
+        //: gboy("roms/individual/09-op r,r.gb") //passed
+        //: gboy("roms/individual/10-bit ops.gb") //passed
+        //: gboy("roms/individual/11-op a,(hl).gb")
     {
         // Name your application
         sAppName = "GesserBoy";
-
-        //System gboy("roms/Zelda.gb");
-        //System gboy("roms/Star Wars.gb");
-        //System gboy("roms/cpu_instrs.gb");
     }
 
 public:
@@ -73,31 +80,31 @@ public:
             }
             else if (running)
             {
-
                 while ( ! gboy.ppu.frame_ready )
                 {
                     gboy.tick();
                     log_last_inst();
-
-//                    if (gboy.cpu.registers.pc == 0x02a0 )
-//                    {
-//                        running = false;
-//                        break;
-//                    }
                 }
-
                 gboy.ppu.frame_ready = false;
                 //render
             }
         }
         catch (std::logic_error const &e)
         {
+            for (const auto &line : gboy.log)
+            {
+                std::cout << line << std::endl;
+            }
             std::cerr << e.what() << std::endl;
             running = false;
             log_last_inst();
         }
         catch (std::exception const &e)
         {
+            for (const auto &line : gboy.log)
+            {
+                std::cout << line << std::endl;
+            }
             std::cerr << gboy.cpu.last_inst_str << std::endl;
             std::cerr << gboy.cpu.state_str() << " | " << e.what() << std::endl;
             running = false;
@@ -154,60 +161,115 @@ public:
 
 
             //Draw screen
+            auto draw_screen = [this](int x_start, int y_start)
+            {
+                for (int y=0; y<144; ++y)
+                {
+                    for (int x=0; x<160; ++x)
+                    {
+                        auto pix = gboy.ppu.screen_buffer[x + 160*y];
+
+                        //if (pix == 0) continue;
+                        auto color = pix == 3 ? olc::GREY
+                                   : pix == 2 ? olc::DARK_GREY
+                                   : pix == 1 ? olc::VERY_DARK_GREY
+                                              : olc::BLACK;
+                        Draw(x + x_start, y + y_start, color);
+                    }
+                }
+            };
+
+//            //Draw tileset
+            auto draw_tileset = [this](int x_start, int y_start)
+            {
+                for (int t=0; t<384; ++t)
+                {
+                    auto tile_pixel_index=[&ppu=gboy.ppu](int tile, int x, int y)
+                    {
+                        auto tile_start = ppu.video_ram + tile*16;
+
+                        auto b0 = tile_start[2*y];
+                        auto b1 = tile_start[2*y+1];
+
+                        auto mask = 1 << (7-x);
+                        auto pix = ((b0 & mask) >> (7-x) )
+                                 | ((b1 & mask) >> (6-x) );
+
+                        return pix;
+                    };
+
+                    for (int y=0; y<8; ++y)
+                    {
+                        for (int x=0; x<8; ++x)
+                        {
+                            auto pix = tile_pixel_index(t, x, y);
+
+                            if (pix == 0) continue;
+                            auto color = pix == 2 ? olc::DARK_GREY
+                                       : pix == 3 ? olc::GREY
+                                       : pix == 1 ? olc::VERY_DARK_GREY
+                                                  : olc::WHITE;
+                            Draw((t * 8 % 160) + x,
+                                 y_start + (y + t * 8 / 160 * 8), color);
+                        }
+                    }
+                }
+            };
+
             const auto x_start = 0;
             const auto y_start = 9*7;
 
-            for (int y=0; y<144; ++y)
+            auto draw_tile_map = [this](int x_start, int y_start)
             {
-                for (int x=0; x<160; ++x)
+                static olc::Sprite screen_area(256, 256);
+
+                int map_offset = gboy.ppu.lcd_control.bg_tile_map_area ? 0x1c00 : 0x1800;
+
+                for (int ty=0; ty<32; ++ty) for (int tx=0; tx<32; ++tx)
                 {
-                    auto pix = gboy.ppu.screen_buffer[x + 160*y];
+                    auto x_pos = tx*8;
+                    auto y_pos = ty*8;
+                    auto tile_index = gboy.ppu.video_ram[map_offset+tx+ty*32];
 
-                    //if (pix == 0) continue;
-                    auto color = pix == 3 ? olc::GREY
-                               : pix == 2 ? olc::DARK_GREY
-                               : pix == 1 ? olc::VERY_DARK_GREY
-                                          : olc::BLACK;
-                    Draw(x + x_start, y + y_start, color);
-                }
-            }
-/*
-            //Draw tileset
-            for (int t=0; t<384; ++t)
-            {
-                auto tile_pixel_index=[&ppu=gboy.ppu](int tile, int x, int y)
-                {
-                    auto tile_start = ppu.video_ram + tile*16;
-
-                    auto b0 = tile_start[2*y];
-                    auto b1 = tile_start[2*y+1];
-
-                    auto mask = 1 << (7-x);
-                    auto pix = ((b0 & mask) >> (7-x) )
-                             | ((b1 & mask) >> (6-x) );
-
-                    return pix;
-                };
-
-                for (int y=0; y<8; ++y)
-                {
-                    for (int x=0; x<8; ++x)
+                    auto tile_pixel_value=[&ppu=gboy.ppu](int tile, int x, int y)
                     {
-                        auto pix = tile_pixel_index(t, x, y);
+                        auto tile_start = ppu.video_ram + tile*16;
 
-                        if (pix == 0) continue;
-                        auto color = pix == 2 ? olc::DARK_GREY
-                                   : pix == 3 ? olc::GREY
+                        auto b0 = tile_start[2*y];
+                        auto b1 = tile_start[2*y+1];
+
+                        auto mask = 1 << (7-x);
+                        auto pix = ((b0 & mask) >> (7-x) )
+                                 | ((b1 & mask) >> (6-x) );
+
+                        return pix;
+                    };
+                    for (int y=0; y<8; ++y) for (int x=0; x<8; ++x)
+                    {
+                        auto pix = tile_pixel_value(tile_index, x, y);
+
+
+                        //if (pix == 0) continue;
+                        auto color = pix == 0 ? olc::BLACK
                                    : pix == 1 ? olc::VERY_DARK_GREY
-                                              : olc::WHITE;
-                        Draw((t * 8 % 160) + x,
-                             y_start + (y + t * 8 / 160 * 8), color);
+                                   : pix == 2 ? olc::DARK_GREY
+                                   : pix == 3 ? olc::GREY
+                                              : olc::WHITE  ;
+
+                        screen_area.GetData()[x_pos + x + (y_pos + y)*256] = color;
                     }
                 }
-            }
-            */
+                DrawSprite(x_start, y_start, &screen_area);
+            };
 
-            DrawString(0, 9*6, "Dbg: ["+gboy.serial_output + "]", olc::RED);
+            //draw_screen(x_start, y_start);
+            //draw_tileset(x_start, y_start);
+            draw_tile_map(x_start, y_start);
+
+            //DrawString(0, 9*6, "Dbg: ["+gboy.serial_output + "]", olc::RED);
+//            std::ostringstream out;
+//            out << std::dec << (int)gboy.ppu.scanline;
+//            DrawString(0, 9*6, out.str(), olc::RED);
         }
 
         return true;
@@ -219,7 +281,7 @@ public:
 int main(int argc, char**argv)
 {
     GesserBoy emulator;
-    if (emulator.Construct(256, 240+16, 4, 4))
+    if (emulator.Construct(260+16, 240*1.4, 2, 2))
         emulator.Start();
 }
 

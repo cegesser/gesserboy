@@ -54,6 +54,8 @@ struct Cpu
     CpuRegisters registers;
     Bus &bus;
 
+    bool halted = false;
+
     std::string last_inst_str;
 
     std::uint8_t arg1;
@@ -74,11 +76,8 @@ struct Cpu
         registers.pc = 0x100;
     }
 
-    std::uint8_t fetch_byte() {
-        return bus[registers.pc++];
-    }
+    std::uint8_t fetch_byte();
 
-    std::size_t run_instruction(int opcode);
     std::size_t run_interrupts();
 
     std::size_t run_once();

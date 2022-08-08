@@ -45,7 +45,7 @@ struct Cartridge
 struct Timer {
 
     // 0xFF04 DIV - Divider Register
-    std::uint8_t divider = 0;
+    std::uint16_t divider = 0xAC00;
     // 0xFF05 TIMA - Timer counter
     std::uint8_t counter = 0;
     // 0xFF06 - TMA - Timer Modulo
@@ -82,9 +82,25 @@ struct Bus
         }
     };
 
-    Ref operator[](std::uint16_t address)
+//    Ref operator[](std::uint16_t address)
+//    {
+//        return Ref { *this, address };
+//    }
+
+
+    std::uint8_t read(std::uint16_t address);
+    void write(std::uint16_t address, std::uint8_t value);
+
+    std::uint16_t read16(std::uint16_t address)
     {
-        return Ref { *this, address };
+        std::uint8_t lsb = read(address + 0);
+        std::uint8_t msb = read(address + 1);
+        return lsb | msb << 8;
+    }
+    void write16(std::uint16_t address, std::uint16_t value)
+    {
+        write(address + 0,  value & 0x00ff);
+        write(address + 1, (value & 0xff00) >> 8);
     }
 
     Ppu &ppu;
@@ -99,12 +115,19 @@ struct Bus
     // 0xA000 - 0xBFFF : Cartridge RAM
     std::uint8_t cartridge_ram[0x2000];
     // 0xC000 - 0xCFFF : RAM Bank 0
+    std::uint8_t work_ram1[0xCFFF-0xC000] = {0};
     // 0xD000 - 0xDFFF : RAM Bank 1-7 - switchable - Color only
-    std::uint8_t work_ram[0x2000];
+    std::uint8_t work_ram2[0xDFFF-0xD000] = {0};
     // 0xE000 - 0xFDFF : Reserved - Echo RAM
-    // 0xFE00 - 0xFE9F : Object Attribute Memory
-    std::uint8_t obj_attribute_memory[0x100];
+    std::uint8_t *work_ram = work_ram1;
+
     // 0xFEA0 - 0xFEFF : Reserved - Unusable
+
+    // 0xFF80 - 0xFFFE : Zero Page
+    std::uint8_t high_ram[0xFFFE-0xFF80] = {0};
+
+    std::uint8_t interrupt_triggered_register = 0; //0xFF0F
+    std::uint8_t interrupt_enable_register = 0; //0xFF0F
 
     // 0xFF00 - 0xFF7F : I/O Registers
     // 0xFF00 - P1/JOYP - Joypad (R/W)
@@ -118,35 +141,35 @@ struct Bus
 //    Bit 2 - P12 Input: Up    or Select   (0=Pressed) (Read Only)
 //    Bit 1 - P11 Input: Left  or B        (0=Pressed) (Read Only)
 //    Bit 0 - P10 Input: Right or A        (0=Pressed) (Read Only)
-    std::uint8_t p1_joypad = 0;
+    std::uint8_t p1_joypad = 0xCF;
 
 
     Timer timer;
     void run_timer_once();
 
 
-    // 0xFF80 - 0xFFFE : Zero Page
-    std::uint8_t high_ram[0x80];
 
 
 
-    enum IntType {
-        int_VBLANK	= 1 << 0,
-        int_LCDSTAT	= 1 << 1,
-        int_TIMER	= 1 << 2,
-        int_SERIAL	= 1 << 3,
-        int_JOYPAD	= 1 << 4,
+
+    enum class InterruptFlag {
+        VBLANK	= 1 << 0,
+        LCDSTAT	= 1 << 1,
+        TIMER	= 1 << 2,
+        SERIAL	= 1 << 3,
+        JOYPAD	= 1 << 4,
     };
 
 
-    bool int_trigger(IntType interrupt);
+    void trigger_interrupt(InterruptFlag interrupt);
 
     bool interrupts_master_enable_flag = true;
 
-    //FF0F
-    std::uint8_t interrupts_flags = 0;
-    //FFFF
-    std::uint8_t interrupts_enable = 0;
+//    //FF0F
+//    std::uint8_t interrupts_flags = 0;
+//    //FFFF
+//    std::uint8_t interrupts_enable = 0;
 
 
 };
+

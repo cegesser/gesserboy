@@ -12,7 +12,5 @@ struct Interrupts
         JOYPAD	= 1 << 4,
     };
 
-    bool trigger(Type interrupt);
-    std::size_t run_once();
 };
 
