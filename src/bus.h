@@ -13,7 +13,7 @@ struct CartridgeHeader{
     char title[16];                   //0134-0143
                                       //013F-0142 - Manufacturer Code
                                       //0143 CGB Flag
-    std::uint8_t new_licensee_code;   //0144-0145 - New Licensee Code
+    std::uint16_t new_licensee_code;   //0144-0145 - New Licensee Code
     std::uint8_t sgb_flag;            //0146 SGB Flag: $00: (Normal GB/CGB) $03: SuperGB functions
     std::uint8_t cartridge_type;      //0147 Cartridge Type
     std::uint8_t rom_size;            //0148 ROM Size
@@ -31,8 +31,17 @@ void print_header(const CartridgeHeader *header);
 
 struct Cartridge
 {
-    std::vector<std::uint8_t> data;
+    std::vector<std::uint8_t> rom_data;
     CartridgeHeader *header;
+
+    int selected_rom_bank = 0;
+    uint8_t *rom_bank_ptr = nullptr;
+
+    bool ram_enabled = false;
+    bool ram_banking_mode = false;
+    int selected_ram_bank = 0;
+    std::vector<std::uint8_t> ram_banks=std::vector<std::uint8_t>(0x2000, 0);
+    std::uint8_t *ram_bank = ram_banks.data();
 
     Cartridge(const std::string &filename)
     {
@@ -40,6 +49,10 @@ struct Cartridge
     }
 
     void load(const std::string &filename);
+    void setup_ram_bank();
+
+    std::uint8_t read(std::uint16_t address);
+    void write(std::uint16_t address, std::uint8_t value);
 };
 
 struct Timer {
@@ -58,36 +71,6 @@ struct Timer {
 
 struct Bus
 {
-    struct Ref
-    {
-        Bus &bus;
-        std::uint16_t address;
-
-        Ref &operator=(std::uint8_t value);
-
-        Ref &operator=(std::uint16_t value)
-        {
-            Ref { bus, std::uint16_t(address + 0) } = std::uint8_t( value & 0x00ff);
-            Ref { bus, std::uint16_t(address + 1) } = std::uint8_t((value & 0xff00) >> 8);
-            return *this;
-        }
-
-        operator std::uint8_t() const;
-
-        operator std::uint16_t() const
-        {
-            std::uint8_t lsb = Ref { bus, std::uint16_t(address + 0) };
-            std::uint8_t msb = Ref { bus, std::uint16_t(address + 1) };
-            return lsb | msb << 8;
-        }
-    };
-
-//    Ref operator[](std::uint16_t address)
-//    {
-//        return Ref { *this, address };
-//    }
-
-
     std::uint8_t read(std::uint16_t address);
     void write(std::uint16_t address, std::uint8_t value);
 
@@ -113,7 +96,6 @@ struct Bus
     // 0x9800 - 0x9BFF : BG Map 1
     // 0x9C00 - 0x9FFF : BG Map 2
     // 0xA000 - 0xBFFF : Cartridge RAM
-    std::uint8_t cartridge_ram[0x2000];
     // 0xC000 - 0xCFFF : RAM Bank 0
     std::uint8_t work_ram1[0xCFFF-0xC000] = {0};
     // 0xD000 - 0xDFFF : RAM Bank 1-7 - switchable - Color only
@@ -141,8 +123,19 @@ struct Bus
 //    Bit 2 - P12 Input: Up    or Select   (0=Pressed) (Read Only)
 //    Bit 1 - P11 Input: Left  or B        (0=Pressed) (Read Only)
 //    Bit 0 - P10 Input: Right or A        (0=Pressed) (Read Only)
-    std::uint8_t p1_joypad = 0xCF;
+    struct JoypadState
+    {
+        bool up = false;
+        bool down = false;
+        bool left = false;
+        bool right = false;
+        bool start = false;
+        bool select = false;
+        bool a = false;
+        bool b = false;
 
+        std::uint8_t query = 0;
+    } p1_joypad;
 
     Timer timer;
     void run_timer_once();

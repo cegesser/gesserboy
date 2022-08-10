@@ -69,14 +69,6 @@ typename std::size_t call(Cpu &cpu)
 {
     using Impl = typename Inst::impl_type;
 
-    if constexpr (std::is_same_v<Impl,NotImplemented>)
-    {
-        std::ostringstream out;
-        out << "Not implemented: ";
-        out << std::hex << std::setw(2) << std::uppercase << std::setfill('0') << int(opcode_v<Inst>);
-        throw std::runtime_error(out.str());
-    }
-
     if constexpr (Inst::ticks == 0)
     {
         return Impl::execute(cpu);
@@ -228,8 +220,14 @@ size_t Cpu::run_interrupts()
     {
         auto flag = int(handler.interrupt);
         if (interrupts_engaged & flag) {
-            bus.write(0xFF0F, interrupts_triggered & ~flag);
             bus.interrupts_master_enable_flag = false;
+            bus.write(0xFF0F, interrupts_triggered & ~flag);
+
+//            if (registers.pc == 0x1fff)
+//            {
+//                throw std::logic_error("");
+//            }
+
             PUSH<PC>::execute(*this);
             registers.pc = handler.address;
             return 12;

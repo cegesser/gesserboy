@@ -4,7 +4,7 @@
 
 #include "cpu.h"
 #include "ppu.h"
-
+#include <list>
 class System
 {
 public:
@@ -13,7 +13,7 @@ public:
     Cpu cpu;
     Ppu ppu;
 
-    std::vector<std::string> log;
+    std::list<std::string> log;
 
     std::string serial_output;
 

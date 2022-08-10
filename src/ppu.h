@@ -33,17 +33,24 @@ public:
     std::uint8_t obj_attribute_memory[0x100];
 
     //FF40
+    //7	LCD and PPU enable	0=Off, 1=On
+    //6	Window tile map area	0=9800-9BFF, 1=9C00-9FFF
+    //5	Window enable	0=Off, 1=On
+    //4	BG and Window tile data area	0=8800-97FF, 1=8000-8FFF
+    //3	BG tile map area	0=9800-9BFF, 1=9C00-9FFF
+    //2	OBJ size	0=8x8, 1=8x16
+    //1	OBJ enable	0=Off, 1=On
+    //0	BG and Window enable/priority	0=Off, 1=On
     union {
-        std::uint8_t value;
+        std::uint8_t value = 0;
         struct {
             bool bg_window_priority : 1;
             bool obj_enable : 1;
             std::uint8_t obj_size : 1; //0=8x8, 1=8x16
             std::uint8_t bg_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
-            std::uint8_t bg_window_tile_map_area : 1; //0=8800-97FF, 1=8000-8FFF
+            std::uint8_t bg_window_tile_data_area : 1; //0=8800-97FF, 1=8000-8FFF
             bool window_enable : 1;
             std::uint8_t window_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
-
             bool lcd_ppu_enable : 1;
         };
     } lcd_control;

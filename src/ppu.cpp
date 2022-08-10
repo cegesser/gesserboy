@@ -12,158 +12,14 @@ Ppu::Ppu(Bus &bus) : bus(bus)
 
 }
 
-struct sprite {
-        unsigned char y;
-        unsigned char x;
-        unsigned char tile;
-        struct {
-                unsigned char priority : 1;
-                unsigned char vFlip : 1;
-                unsigned char hFlip : 1;
-                unsigned char palette : 1;
-        };
-};
-
 int ticks = 0;
 int gpu_ticks = 0;
 
-void render_scanline(Ppu &ppu)
-{
-    //return;
-    auto tile_pixel_index=[&ppu](int tile, int x, int y)
-    {
-        auto tile_start = ppu.video_ram + tile*16;
-
-        auto b0 = tile_start[2*y];
-        auto b1 = tile_start[2*y+1];
-
-        auto mask = 1 << (7-x);
-        auto pix = ((b0 & mask) >> (7-x) )
-                 | ((b1 & mask) >> (6-x) );
-
-        return pix;
-    };
-
-    int base_mapOffset = ppu.lcd_control.bg_tile_map_area ? 0x1c00 : 0x1800;
-
-
-
-    int mapOffset = base_mapOffset + ((((ppu.scanline + ppu.lcd_scroll_y) & 255) >> 3) << 5);
-
-
-    int lineOffset = (ppu.lcd_scroll_x >> 3);
-
-    int x = ppu.lcd_scroll_x & 7;
-    int y = (ppu.scanline + ppu.lcd_scroll_y) & 7;
-
-    int pixelOffset = ppu.scanline * 160;
-
-
-    unsigned short tile = (unsigned short)ppu.video_ram[mapOffset + lineOffset];
-    //if((gpu.control & GPU_CONTROL_TILESET) && tile < 128) tile += 256;
-
-    unsigned char scanlineRow[160];
-
-    // if bg enabled
-    int i;
-    for(i = 0; i < 160; i++) {
-
-
-        auto color_index = tile_pixel_index(tile, x, y);
-
-        scanlineRow[i] = color_index;
-
-        ppu.screen_buffer[pixelOffset] = color_index;
-        pixelOffset++;
-
-        x++;
-        if(x == 8) {
-            x = 0;
-            lineOffset = (lineOffset + 1) & 31;
-            tile = ppu.video_ram[mapOffset + lineOffset];
-            //if((gpu.control & GPU_CONTROL_TILESET) && tile < 128) tile += 256;
-        }
-    }
-
-//    // if sprites enabled
-//    for(i = 0; i < 40; i++) {
-//        struct sprite sprite = ((struct sprite *)ppu.obj_attribute_memory)[i];
-
-//        int sx = sprite.x - 8;
-//        int sy = sprite.y - 16;
-
-//        if(sy <= ppu.scanline && (sy + 8) > ppu.scanline) {
-//            auto *pal = ppu.obj_palette_data[sprite.palette];
-
-//            int pixelOffset = ppu.scanline * 160 + sx;
-
-
-//            unsigned char tileRow;
-//            if(sprite.vFlip) tileRow = 7 - (ppu.scanline - sy);
-//            else tileRow = ppu.scanline - sy;
-
-//            int x;
-//            for(x = 0; x < 8; x++) {
-//                if(sx + x >= 0 && sx + x < 160 && (~sprite.priority || !scanlineRow[sx + x])) {
-//                    unsigned char colour;
-
-//                    unsigned short tile = (unsigned short)ppu.video_ram[sprite.tile + lineOffset];
-
-
-//                    if(sprite.hFlip) colour = tile_pixel_index(tile, 7-x, tileRow);
-//                    else             colour = tile_pixel_index(tile, x, tileRow);
-
-//                    if(colour) {
-//                        ppu.screen_buffer[pixelOffset] = colour;
-
-//                    }
-
-//                    pixelOffset++;
-//                }
-//            }
-//        }
-//    }
-
-}
-
-struct {
-    bool active = false;
-    uint8_t byte;
-    uint8_t value;
-    uint8_t start_delay;
-} dma;
-
-void dma_start(uint8_t start) {
-    dma.active = true;
-    dma.byte = 0;
-    dma.start_delay = 2;
-    dma.value = start;
-}
 
 void Ppu::run_ounce()
 {
     ++ticks;
-/*
-    if (ticks % 4)
-    {
-        if (dma.active)
-        {
-            if (dma.start_delay)
-            {
-                --dma.start_delay;
-            }
-            else
-            {
-                uint8_t v = bus[dma.value * 0x100 + dma.byte];
-                bus[dma.byte + 0xFE00] = v;
 
-                dma.byte++;
-
-                dma.active = dma.byte < 0xA0;
-            }
-        }
-    }
-*/
     static int old_ticks = 0;
 
     gpu_ticks += ticks - old_ticks;
@@ -225,7 +81,7 @@ void Ppu::run_ounce()
         {
             mode = HBLANK;
 
-            render_scanline(*this);
+            //render_scanline(*this);
 
             gpu_ticks -= 172;
         }
@@ -240,7 +96,9 @@ uint8_t Ppu::read(uint16_t address) const
 {
     switch (address)
     {
-        case 0xFF40: std::cout << "PPU read: FF040 " << std::hex << (int)lcd_control.value << std::endl;return lcd_control.value;
+        case 0xFF40:
+            std::cout << "PPU read: FF40 " << std::hex << (int)lcd_control.value << std::endl;
+            return lcd_control.value;
         case 0xFF41: std::cout << "PPU read: " << std::hex << address << std::endl;return lcd_status;
         case 0xFF42: std::cout << "PPU read: " << std::hex << address << std::endl;return lcd_scroll_y;
         case 0xFF43: std::cout << "PPU read: " << std::hex << address << std::endl;return lcd_scroll_x;
@@ -248,7 +106,8 @@ uint8_t Ppu::read(uint16_t address) const
         case 0xFF45: std::cout << "PPU read: " << std::hex << address << std::endl;return ly_compare;
 
         case 0xFF46: //DMA
-            if (dma.active) {
+            //if (dma.active)
+            {
                 return 0xFF;
             }
 
@@ -286,20 +145,10 @@ void Ppu::write(uint16_t address, uint8_t value)
         case 0xFF45: ly_compare = value; return;
         case 0xFF46: //DMA
         {
-//            if ( dma.active )
-//            {
-//                std::cout << "DMA ongoing: " << int(value) << "\n";
-
-//            }
-//            if ( ! dma.active )
-//            {
-//                std::cout << "DMA starting: " << int(value) << "\n";
-//                dma_start(value);
-//            }
-            //std::cout << "DMA starting: " << std::hex << (value << 8) << "-" << ((value << 8)+160) << " to " << 0xfe00 << "\n";
-             auto dst = 0xfe00;
-             auto src = int(value) << 8;
-             auto len = 160;
+            auto src = int(value) << 8;
+            auto dst = 0xfe00;
+            std::cout << "DMA starting: " << std::hex << src << "-" << (src+160) << " to " << dst << "\n";
+            auto len = 160;
 
              for (int i = 0; i < len; i++) {
                  bus.write(dst+i, bus.read(src+i));
