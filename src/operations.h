@@ -324,7 +324,7 @@ struct DI : Operation<1> {
     using result_type = void;
 
     static void execute(Cpu &cpu) {
-        cpu.bus.interrupts_master_enable_flag = false;
+        cpu.inerrupts_master_enable_flag = false;
     }
     static std::string mnemonic(const Cpu &) {  return "DI"; }
 };
@@ -334,7 +334,7 @@ struct EI : Operation<1> {
     using result_type = void;
 
     static void execute(Cpu &cpu) {
-        cpu.bus.interrupts_master_enable_flag = true;
+        cpu.inerrupts_master_enable_flag = true;
     }
     static std::string mnemonic(const Cpu &) {  return "EI"; }
 };

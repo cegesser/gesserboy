@@ -35,7 +35,7 @@ void Ppu::run_ounce()
 
             if (scanline == 143)
             {
-                bus.trigger_interrupt(Bus::InterruptFlag::VBLANK);
+                bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
 
                 mode = VBLANK;
             }

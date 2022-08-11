@@ -198,7 +198,26 @@ public:
     {
         static olc::Sprite screen_area(256, 256);
 
-        auto draw_tile = [&gboy=gboy](int x_pos, int y_pos, int tile_index, int tiles_offset)
+        union ObjAttribs {
+            std::uint8_t value;
+            struct {
+                std::uint8_t cgb_pallete_number : 3;
+                bool cgb_tile_vram_bank : 1;
+                std::uint8_t pallete_number : 1;
+                bool x_flip : 1;
+                bool y_flip : 1;
+                bool bg_window_over : 1;
+
+//                    Bit7   BG and Window over OBJ (0=No, 1=BG and Window colors 1-3 over the OBJ)
+//                    Bit6   Y flip          (0=Normal, 1=Vertically mirrored)
+//                    Bit5   X flip          (0=Normal, 1=Horizontally mirrored)
+//                    Bit4   Palette number  **Non CGB Mode Only** (0=OBP0, 1=OBP1)
+//                    Bit3   Tile VRAM-Bank  **CGB Mode Only**     (0=Bank 0, 1=Bank 1)
+//                    Bit2-0 Palette number  **CGB Mode Only**     (OBP0-7)
+            };
+        };
+
+        auto draw_tile = [&gboy=gboy](int x_pos, int y_pos, int tile_index, int tiles_offset, ObjAttribs attribs)
         {
             auto tile_pixel_value=[&](int tile_index, int x, int y)
             {
@@ -220,6 +239,23 @@ public:
 
                 auto pix = tile_pixel_value(tile_index, x, y);
                 auto plt_color = gboy.ppu.bg_palette_data[pix];
+                if ( ! tiles_offset )
+                {
+                    if (attribs.x_flip && attribs.y_flip)
+                    {
+                        pix = tile_pixel_value(tile_index, 8-x, 8-y);
+                    }
+                    else if (attribs.x_flip)
+                    {
+                        pix = tile_pixel_value(tile_index, 8-x, y);
+                    }
+                    else if (attribs.y_flip)
+                    {
+                        pix = tile_pixel_value(tile_index, x, 8-y);
+                    }
+
+                    plt_color = gboy.ppu.obj_palette_data[attribs.pallete_number][pix];
+                }
 
                 auto color = plt_color == 3 ? olc::BLACK
                            : plt_color == 2 ? olc::VERY_DARK_GREY
@@ -227,7 +263,10 @@ public:
                            : plt_color == 0 ? olc::GREY
                                             : olc::WHITE  ;
 
-                screen_area.GetData()[x_pos + x + (y_pos + y)*256] = color;
+                if ( tiles_offset || plt_color > 0 || attribs.bg_window_over )
+                {
+                    screen_area.GetData()[x_pos + x + (y_pos + y)*256] = color;
+                }
             }
         };
 
@@ -248,17 +287,18 @@ public:
                 tile_index = int8_t(tile_index);
             }
 
-            draw_tile(x_pos, y_pos, tile_index, tiles_offset);
+            draw_tile(x_pos, y_pos, tile_index, tiles_offset, {0});
         }
 
         for (int s=0; s<40*4; s+=4)
         {
             auto sy = gboy.ppu.obj_attribute_memory[s+0];
             auto sx = gboy.ppu.obj_attribute_memory[s+1];
-            auto s_tile = gboy.ppu.obj_attribute_memory[s+2];
-            auto s_attribs = gboy.ppu.obj_attribute_memory[s+3];
+            auto tile = gboy.ppu.obj_attribute_memory[s+2];
+            ObjAttribs attribs;
+            attribs.value = gboy.ppu.obj_attribute_memory[s+3];
 
-            draw_tile(sx-8, sy-16, s_tile, 0);
+            draw_tile(sx-8, sy-16, tile, 0, attribs);
         }
 
         DrawSprite(x_start, y_start, &screen_area);

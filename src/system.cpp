@@ -8,7 +8,10 @@ System::System(const std::string &cartridge_filename)
     , cpu{ bus }
     , ppu{ bus }
 {
-    print_header(cart.header);
+    std::cout << "Title    : " << cart.header->title  << std::endl;
+    std::cout << "Type     : " << int(cart.header->cartridge_type) << ": " << cartridge_type(cart.header) << std::endl;
+    std::cout << "ROM Size : " << (32 << cart.header->rom_size) << " KBytes"  << std::endl;
+    std::cout << "RAM Size : " << int(cart.header->ram_size) << std::endl;
 }
 
 void System::tick()

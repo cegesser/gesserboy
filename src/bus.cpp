@@ -4,229 +4,27 @@
 #include <sstream>
 #include <fstream>
 
-const char *cartridge_type(const CartridgeHeader *header)
-{
-    static const char *types[0xFF+1] = { 0 };
-    if (types[0x00] == nullptr)
-    {
-        types[0x00] = "ROM ONLY";
-        types[0x01] = "MBC1";
-        types[0x02] = "MBC1+RAM";
-        types[0x03] = "MBC1+RAM+BATTERY";
-        types[0x05] = "MBC2";
-        types[0x06] = "MBC2+BATTERY";
-        types[0x08] = "ROM+RAM 1";
-        types[0x09] = "ROM+RAM+BATTERY 1";
-        types[0x0B] = "MMM01";
-        types[0x0C] = "MMM01+RAM";
-        types[0x0D] = "MMM01+RAM+BATTERY";
-        types[0x0F] = "MBC3+TIMER+BATTERY";
-        types[0x10] = "MBC3+TIMER+RAM+BATTERY 2";
-        types[0x11] = "MBC3";
-        types[0x12] = "MBC3+RAM 2";
-        types[0x13] = "MBC3+RAM+BATTERY 2";
-        types[0x19] = "MBC5";
-        types[0x1A] = "MBC5+RAM";
-        types[0x1B] = "MBC5+RAM+BATTERY";
-        types[0x1C] = "MBC5+RUMBLE";
-        types[0x1D] = "MBC5+RUMBLE+RAM";
-        types[0x1E] = "MBC5+RUMBLE+RAM+BATTERY";
-        types[0x20] = "MBC6";
-        types[0x22] = "MBC7+SENSOR+RUMBLE+RAM+BATTERY";
-        types[0xFC] = "POCKET CAMERA";
-        types[0xFD] = "BANDAI TAMA5";
-        types[0xFE] = "HuC3";
-        types[0xFF] = "HuC1+RAM+BATTERY";
-    }
-    return types[header->cartridge_type];
-}
-
-void print_header(const CartridgeHeader *header)
-{
-    std::cout << "Title    : " << header->title  << std::endl;
-    std::cout << "Type     : " << int(header->cartridge_type) << ": " << cartridge_type(header) << std::endl;
-    std::cout << "ROM Size : " << (32 << header->rom_size) << " KBytes"  << std::endl;
-    std::cout << "RAM Size : " << int(header->ram_size) << std::endl;
-}
-
-
-void Cartridge::load(const std::string &filename)
-{
-    {
-        std::ifstream fp(filename, std::ios::binary);
-
-        if (!fp)
-        {
-            throw std::runtime_error("Unable to open file: " + filename);
-        }
-
-        fp.seekg(0, std::ios::end);
-        std::uint64_t rom_size = fp.tellg();
-
-        fp.seekg(0, std::ios::beg);
-        rom_data.resize(rom_size);
-
-        fp.read((char*)rom_data.data(), rom_data.size());
-
-        rom_bank_ptr = rom_data.data()+0x4000;
-    }
-
-    header = new (&rom_data[0x100]) CartridgeHeader;
-
-    header->title[15] = 0;
-
-    std::uint16_t x = 0;
-    for (std::uint16_t i=0x0134; i<=0x014C; i++)
-    {
-        x = x - rom_data[i] - 1;
-    }
-
-    if ( ! (x & 0xFF) )
-    {
-        throw std::runtime_error("Invalid header checksum");
-    }
-}
-
-void Cartridge::setup_ram_bank()
-{
-    if (ram_banks.size() < 0x2000*(selected_ram_bank+1))
-    {
-        ram_banks.resize(0x2000*(selected_ram_bank+1));
-    }
-
-    ram_bank = &ram_banks[0x2000*selected_ram_bank];
-}
-
-uint8_t Cartridge::read(uint16_t address)
-{
-    //0000	3FFF	16 KiB ROM bank 00	From cartridge, usually a fixed bank
-    if (0x0000 <= address && address  <= 0x3FFF)
-    {
-        return rom_data[address];
-    }
-    //4000	7FFF	16 KiB ROM Bank 01~NN	From cartridge, switchable bank via mapper (if any)
-    if (0x4000 <= address && address  <= 0x7FFF)
-    {
-        return rom_bank_ptr[address-0x4000];
-    }
-    if (0xA000 <= address && address  <= 0xBFFF)
-    {
-        if (ram_enabled)
-        {
-            return ram_bank[address-0xA000];
-        }
-
-        return 0xFF;
-    }
-
-    std::ostringstream out;
-    out <<  "Read from cart at " << std::hex << address << " not yet implemented";
-    throw std::runtime_error(out.str());
-}
-
-void Cartridge::write(uint16_t address, uint8_t value)
-{
-    if (header->cartridge_type == 1 || header->cartridge_type == 2 || header->cartridge_type == 3)
-    {
-        //enable/disable ram
-        if (0x0000 <= address && address  <= 0x1FFF)
-        {
-            ram_enabled = (value & 0xF) == 0xA;
-            return;
-        }
-        //rom bank selection
-        if (0x2000 <= address && address  <= 0x3FFF)
-        {
-            if (value == 0)
-            {
-                value = 1;
-            }
-
-            selected_rom_bank = value & 0b00011111;
-            rom_bank_ptr = &rom_data[0x4000 * selected_rom_bank];
-            return;
-        }
-
-        //RAM Bank Number - or - Upper Bits of ROM Bank Number (Write Only)
-        if (0x4000 <= address && address  <= 0x5FFF)
-        {
-            //ram bank number
-            selected_ram_bank = value & 0b11;
-
-            if (ram_banking_mode)
-            {
-                setup_ram_bank();
-            }
-            return;
-        }
-
-        // Banking Mode Select (Write Only)
-        if (0x6000 <= address && address  <= 0x7FFF)
-        {
-            ram_banking_mode = value & 1;
-
-            if (ram_banking_mode)
-            {
-                setup_ram_bank();
-            }
-            return;
-        }
-
-    }
-    else if (address < 0x7FFF)
-    {
-        return;
-    }
-
-    if (0xA000 <= address && address  <= 0xBFFF)
-    {
-        if ( ram_enabled)
-        {
-            ram_bank[address - 0xA000] = value;
-        }
-
-        return;
-    }
-
-    std::ostringstream out;
-    out <<  "Write to cart at " << std::hex << address << " not yet implemented";
-    throw std::runtime_error(out.str());
-}
 
 std::uint8_t serial_data = 0;
 std::uint8_t serial_control = 0;
 void serial_transfer_data_write(std::uint8_t data)
 {
     serial_data = data;
-    //std::cout << "DW " << std::hex << int(data) << std::endl;
 }
 
 std::uint8_t serial_transfer_data_read()
 {
-    //std::cout << "DR " << std::hex << int(serial_data) << std::endl;
     return serial_data;
 }
 
 void serial_transfer_control_write(std::uint8_t data)
 {
     serial_control = data;
-    //std::cout << "CW " <<  std::hex << int(data) << std::endl;
 }
 
 std::uint8_t serial_transfer_control_read()
 {
-    //std::cout << "CR " <<  std::hex << int(serial_control) << std::endl;
     return serial_control;
-}
-
-void Bus::trigger_interrupt(InterruptFlag interrupt)
-{
-    //const auto interrupts_enabled = read(0xFFFF);
-    //if (interrupts_enabled & int(interrupt))
-    {
-        const auto interrupts_triggered = read(0xFF0F);
-        write(0xFF0F, interrupts_triggered | int(interrupt));
-    }
 }
 
 uint8_t io_read(Bus &bus, std::uint16_t address)
@@ -295,7 +93,7 @@ uint8_t io_read(Bus &bus, std::uint16_t address)
     //$FF68	$FF69	CGB	BG / OBJ Palettes
     //$FF70		CGB	WRAM Bank Select
 
-    if (address == 0xFF0F) return bus.interrupt_triggered_register;
+    if (address == 0xFF0F) return bus.interrupts.trigger_register;
 
     std::ostringstream out;
     out <<  "Reading IO from " << std::hex << address << " not yet implemented";
@@ -318,7 +116,7 @@ void io_write(Bus &bus, std::uint16_t address, uint8_t value)
     if (address == 0xFF06) { bus.timer.modulo  = value; return; }
     if (address == 0xFF07) { bus.timer.control = value; return; }
 
-    if (address == 0xFF0F) { bus.interrupt_triggered_register = value; return; }
+    if (address == 0xFF0F) { bus.interrupts.trigger_register = value; return; }
 
     //$FF10	$FF26	DMG	Sound
     if (0xFF10 <= address && address <= 0xFF26) { return; }
@@ -402,7 +200,7 @@ uint8_t Bus::read(std::uint16_t address)
     //FFFF	FFFF	Interrupt Enable register (IE)
     if (0xFFFF <= address && address <= 0xFFFF)
     {
-        return interrupt_enable_register;
+        return interrupts.enable_register;
     }
 
     std::ostringstream out;
@@ -488,8 +286,7 @@ void Bus::write(uint16_t address, uint8_t value)
     //FFFF	FFFF	Interrupt Enable register (IE)
     if (address == 0xFFFF)
     {
-        std::cout << "int en "<< std::hex << (int)interrupt_enable_register << std::endl;
-        interrupt_enable_register = value;
+        interrupts.enable_register = value;
         return;
     }
 
@@ -527,7 +324,7 @@ void Bus::run_timer_once()
         if (timer.counter == 0xFF) {
             timer.counter = timer.modulo;
 
-            this->trigger_interrupt(InterruptFlag::TIMER);
+            interrupts.trigger_interrupt(Interrupts::TIMER);
         }
     }
 }
