@@ -8,91 +8,99 @@
 #include "bus.h"
 
 
+static const int LINES_PER_FRAME = 154;
+static const int TICKS_PER_LINE = 456;
+static const int YRES = 144;
+static const int XRES = 160;
+
 Ppu::Ppu(Bus &bus) : bus(bus)
 {
 
 }
 
-int cpu_ticks = 0;
-int ppu_ticks = 0;
+void emit_stat_interrupt(Ppu &ppu, bool condition)
+{
+    if (condition && ppu.lcd_control.lcd_ppu_enable)
+    {
+        ppu.bus.interrupts.trigger_interrupt(Interrupts::LCDSTAT);
+    }
+}
 
 
+//456 dots per line
+//156 lines per frame
+//One frame: 70224 dots @ 59.7 fps
 void Ppu::run_ounce()
 {
-    ++cpu_ticks;
+    ++line_tick;
 
-    static int old_cpu_ticks = 0;
-
-    ppu_ticks += cpu_ticks - old_cpu_ticks;
-
-    old_cpu_ticks = cpu_ticks;
-
-    switch(lcd_status.mode_flag)
+    if (line_tick == 456)
     {
-    case HBLANK:
-        if (ppu_ticks >= 204)
+        line_tick = 0;
+
+        ++line_y;
+        lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
+
+        if (line_y > 154)
         {
-            line_y++;
+            line_y = 0;
             lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
 
-            if (line_y == 143)
+            if (lcd_control.lcd_ppu_enable)
             {
-                if (lcd_control.lcd_ppu_enable)
-                {
-                    bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
-                }
-
-                lcd_status.mode_flag = VBLANK;
+                bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
             }
-            else
-            {
-                lcd_status.mode_flag = OAM;
-            }
-
-            ppu_ticks -= 204;
+            emit_stat_interrupt(*this, lcd_status.STAT_vblank_interrupt_source);
         }
-        break;
 
-    case VBLANK:
-        if (ppu_ticks >= 456)
+        if (line_y == ly_compare && lcd_status.STAT_lyc_interrupt_source)
         {
-            line_y++;
-            lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
+            emit_stat_interrupt(*this, lcd_status.STAT_lyc_interrupt_source);
+        }
 
-            if (line_y == 144)
+        if (line_y == 144)
+        {
+            frame_ready = true;
+        }
+    }
+
+
+    if (line_y < 144)
+    {
+        //modes 2/3/0
+        if (line_tick < 80)
+        {
+            if (line_tick == 0 && lcd_status.STAT_oam_interrupt_source)
             {
-                frame_ready = true;
+                emit_stat_interrupt(*this, lcd_status.STAT_oam_interrupt_source);
+            }
+            lcd_status.current_mode = Ppu::OAM;
+            //CPU cannot access OAM ($FE00-FE9F).
+
+            //Searching OAM for OBJs whose Y coordinate overlap this line
+        }
+        else if (line_tick < 205) //168 to 291 depending on sprite count
+        {
+            lcd_status.current_mode = Ppu::TRANSFER;
+            //CPU cannot access OAM ($FE00-FE9F).
+            //CPU cannot access VRAM or CGB palette data registers ($FF69,$FF6B).
+
+            //Reading OAM and VRAM to generate the picture
+        }
+        else
+        {
+            if (lcd_status.current_mode == Ppu::TRANSFER)
+            {
+                emit_stat_interrupt(*this, lcd_status.STAT_hblank_interrupt_source);
             }
 
-            if(line_y > 153)
-            {
-                line_y = 0;
-                lcd_status.mode_flag = OAM;
-            }
-
-            ppu_ticks -= 456;
+            lcd_status.current_mode = Ppu::HBLANK;
         }
-        break;
-
-    case OAM:
-        if (ppu_ticks >= 80)
-        {
-            lcd_status.mode_flag = VRAM;
-            ppu_ticks -= 80;
-        }
-        break;
-
-    case VRAM:
-        if (ppu_ticks >= 172)
-        {
-            lcd_status.mode_flag = HBLANK;
-
-            //render_scanline(*this);
-
-            ppu_ticks -= 172;
-        }
-
-        break;
+    }
+    else
+    {
+        //mode 1
+        lcd_status.current_mode = Ppu::VBLANK;
     }
 }
 
@@ -125,7 +133,7 @@ void start_dma(Bus &bus, std::uint8_t value)
 {
     auto src = int(value) << 8;
     auto dst = 0xfe00;
-    std::cout << "DMA starting: " << std::hex << src << "-" << (src+160) << " to " << dst << "\n";
+    //std::cout << "DMA starting: " << std::hex << src << "-" << (src+160) << " to " << dst << "\n";
     auto len = 160;
 
      for (int i = 0; i < len; i++) {

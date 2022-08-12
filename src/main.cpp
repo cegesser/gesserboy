@@ -282,8 +282,8 @@ public:
 
         for (int ty=0; ty<32; ++ty) for (int tx=0; tx<32; ++tx)
         {
-            auto x_pos = tx*8 - gboy.ppu.lcd_scroll_x;
-            auto y_pos = ty*8 - gboy.ppu.lcd_scroll_y;
+            auto x_pos = (tx*8 - gboy.ppu.lcd_scroll_x + 256)%256;
+            auto y_pos = (ty*8 - gboy.ppu.lcd_scroll_y + 256)%256;
             int tile_index = gboy.ppu.video_ram[map_offset+tx+ty*32];
             if (gboy.ppu.lcd_control.bg_window_tile_data_area==0)
             {
