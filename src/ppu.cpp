@@ -3,6 +3,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <iostream>
 #include "bus.h"
 
@@ -12,78 +13,83 @@ Ppu::Ppu(Bus &bus) : bus(bus)
 
 }
 
-int ticks = 0;
-int gpu_ticks = 0;
+int cpu_ticks = 0;
+int ppu_ticks = 0;
 
 
 void Ppu::run_ounce()
 {
-    ++ticks;
+    ++cpu_ticks;
 
-    static int old_ticks = 0;
+    static int old_cpu_ticks = 0;
 
-    gpu_ticks += ticks - old_ticks;
+    ppu_ticks += cpu_ticks - old_cpu_ticks;
 
-    old_ticks = ticks;
+    old_cpu_ticks = cpu_ticks;
 
-    switch(mode)
+    switch(lcd_status.mode_flag)
     {
     case HBLANK:
-        if (gpu_ticks >= 204)
+        if (ppu_ticks >= 204)
         {
-            scanline++;
+            line_y++;
+            lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
 
-            if (scanline == 143)
+            if (line_y == 143)
             {
-                bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
+                if (lcd_control.lcd_ppu_enable)
+                {
+                    bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
+                }
 
-                mode = VBLANK;
+                lcd_status.mode_flag = VBLANK;
             }
             else
             {
-                mode = OAM;
+                lcd_status.mode_flag = OAM;
             }
 
-            gpu_ticks -= 204;
+            ppu_ticks -= 204;
         }
         break;
 
     case VBLANK:
-        if (gpu_ticks >= 456)
+        if (ppu_ticks >= 456)
         {
-            scanline++;
+            line_y++;
+            lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
 
-            if (scanline == 144)
+            if (line_y == 144)
             {
                 frame_ready = true;
             }
 
-            if(scanline > 153)
+            if(line_y > 153)
             {
-                scanline = 0;
-                mode = OAM;
+                line_y = 0;
+                lcd_status.mode_flag = OAM;
             }
 
-            gpu_ticks -= 456;
+            ppu_ticks -= 456;
         }
         break;
 
     case OAM:
-        if (gpu_ticks >= 80)
+        if (ppu_ticks >= 80)
         {
-            mode = VRAM;
-            gpu_ticks -= 80;
+            lcd_status.mode_flag = VRAM;
+            ppu_ticks -= 80;
         }
         break;
 
     case VRAM:
-        if (gpu_ticks >= 172)
+        if (ppu_ticks >= 172)
         {
-            mode = HBLANK;
+            lcd_status.mode_flag = HBLANK;
 
             //render_scanline(*this);
 
-            gpu_ticks -= 172;
+            ppu_ticks -= 172;
         }
 
         break;
@@ -96,35 +102,36 @@ uint8_t Ppu::read(uint16_t address) const
 {
     switch (address)
     {
-        case 0xFF40:
-            std::cout << "PPU read: FF40 " << std::hex << (int)lcd_control.value << std::endl;
-            return lcd_control.value;
-        case 0xFF41: std::cout << "PPU read: " << std::hex << address << std::endl;return lcd_status;
-        case 0xFF42: std::cout << "PPU read: " << std::hex << address << std::endl;return lcd_scroll_y;
-        case 0xFF43: std::cout << "PPU read: " << std::hex << address << std::endl;return lcd_scroll_x;
-        case 0xFF44: return scanline;
-        case 0xFF45: std::cout << "PPU read: " << std::hex << address << std::endl;return ly_compare;
-
-        case 0xFF46: //DMA
-            //if (dma.active)
-            {
-                return 0xFF;
-            }
-
-        //return ppu_oam_read(address);
-
-
-        case 0xFF47:// - BGP (BG Palette Data) (R/W) - Non CGB Mode Only
-        case 0xFF48: // - OBP0 (OBJ Palette 0 Data) (R/W), FF49 - OBP1 (OBJ Palette 1 Data) (R/W) - Both Non CGB Mode Only
-        case 0xFF49: // - ^^^^^
-            break;
-        case 0xFF4A: std::cout << "PPU read: " << std::hex << address << std::endl;return window_y_pos;
-        case 0xFF4B: std::cout << "PPU read: " << std::hex << address << std::endl;return window_x_pos;
+        case 0xFF40: return lcd_control.value;
+        case 0xFF41: return lcd_status.value;
+        case 0xFF42: return lcd_scroll_y;
+        case 0xFF43: return lcd_scroll_x;
+        case 0xFF44: return line_y;
+        case 0xFF45: return ly_compare;
+        case 0xFF46: return 0xFF; //DMA
+        case 0xFF47: break;// - BGP (BG Palette Data) (R/W) - Non CGB Mode Only
+        case 0xFF48: break;// - OBP0 (OBJ Palette 0 Data) (R/W), FF49 - OBP1 (OBJ Palette 1 Data) (R/W) - Both Non CGB Mode Only
+        case 0xFF49: break;// - ^^^^^
+        case 0xFF4A: return window_y_pos;
+        case 0xFF4B: return window_x_pos;
     }
 
-    throw std::runtime_error("PPU read from " + std::to_string(address));
+    std::ostringstream out;
+    out <<  "PPU read from " << std::hex << address << " not yet implemented";
+    throw std::runtime_error(out.str());
 }
 
+void start_dma(Bus &bus, std::uint8_t value)
+{
+    auto src = int(value) << 8;
+    auto dst = 0xfe00;
+    std::cout << "DMA starting: " << std::hex << src << "-" << (src+160) << " to " << dst << "\n";
+    auto len = 160;
+
+     for (int i = 0; i < len; i++) {
+         bus.write(dst+i, bus.read(src+i));
+     }
+}
 
 void write_palette_data(uint8_t data[4], uint8_t value)
 {
@@ -136,25 +143,21 @@ void write_palette_data(uint8_t data[4], uint8_t value)
 
 void Ppu::write(uint16_t address, uint8_t value)
 {
+    if (0xFE00 <= address  && address <= 0xFE9F)
+    {
+        obj_attribute_memory[address - 0xFE00] = value;
+        return;
+    }
+
     switch (address)
     {
         case 0xFF40: lcd_control.value = value; return;
-        case 0xFF41: lcd_status = value; std::cout << "PPU write: " << std::hex << address << " " << int(value) << std::endl; return;
+        case 0xFF41: lcd_status.value = value; return;
         case 0xFF42: lcd_scroll_y = value; return;
         case 0xFF43: lcd_scroll_x = value; return;
+        case 0xFF44: break; //line_y is read-only;
         case 0xFF45: ly_compare = value; return;
-        case 0xFF46: //DMA
-        {
-            auto src = int(value) << 8;
-            auto dst = 0xfe00;
-            std::cout << "DMA starting: " << std::hex << src << "-" << (src+160) << " to " << dst << "\n";
-            auto len = 160;
-
-             for (int i = 0; i < len; i++) {
-                 bus.write(dst+i, bus.read(src+i));
-             }
-            return;
-        }
+        case 0xFF46: start_dma(bus, value); return;
         case 0xFF47: write_palette_data(bg_palette_data, value); return;
         case 0xFF48: write_palette_data(obj_palette_data[0], value); return;
         case 0xFF49: write_palette_data(obj_palette_data[1], value); return;
@@ -162,5 +165,7 @@ void Ppu::write(uint16_t address, uint8_t value)
         case 0xFF4B: window_x_pos = value; return;
     }
 
-    throw std::runtime_error("PPU write to " + std::to_string(address));
+    std::ostringstream out;
+    out <<  "PPU write to " << std::hex << address << " not yet implemented";
+    throw std::runtime_error(out.str());
 }

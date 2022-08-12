@@ -1,4 +1,5 @@
 #include "cartridge.h"
+#include <iostream>
 #include <fstream>
 #include <sstream>
 
@@ -6,7 +7,10 @@ struct MBC0 : MemoryBankController
 {
     uint8_t read(uint16_t address) override
     {
-        if (address < 0x8000) return rom[address];
+        if (address <= 0x7FFF)
+        {
+            return rom[address];
+        }
         return 0;
     }
 
@@ -19,20 +23,20 @@ struct MBC0 : MemoryBankController
 struct MBC1 : MemoryBankController
 {
     bool ram_enabled = false;
-    bool advanced_mode = false;
-    uint8_t rom_bank = 1;
-    uint8_t ram_bank = 0;
+    bool rom_banking_mode = false;
+    uint8_t selected_rom_bank = 1;
+    uint8_t selected_ram_bank = 0;
 
     uint8_t read(uint16_t address) override
     {
-        if (0x0000 <= address && address  <= 0x3FFF)
+        if (0x0000 <= address && address <= 0x3FFF)
         {
             return rom[address];
         }
 
-        if (0x4000 <= address && address  <= 0x7FFF)
+        if (0x4000 <= address && address <= 0x7FFF)
         {
-            return rom[rom_bank * 0x4000 + address - 0x4000];
+            return rom[selected_rom_bank * 0x4000 + address - 0x4000];
         }
 
         if (0xA000 <= address && address <= 0xBFFF)
@@ -41,13 +45,13 @@ struct MBC1 : MemoryBankController
             {
                 return 0;
             }
-            if (advanced_mode)
+            if (rom_banking_mode)
             {
-                return ram[ram_bank *  0x2000 + address - 0xA000];
+                return ram[address - 0xA000];
             }
             else
             {
-                return ram[address - 0xA000];
+                return ram[selected_ram_bank * 0x2000 + address - 0xA000];
             }
         }
 
@@ -68,27 +72,41 @@ struct MBC1 : MemoryBankController
         //2000-3FFF - ROM Bank Number (Write Only)
         if (0x2000 <= address && address  <= 0x3FFF)
         {
-            if (value == 0)
+            selected_rom_bank &= 0b11100000;
+            selected_rom_bank |= value & 0b00011111 ;
+            if (selected_rom_bank == 0)
             {
-                value = 1;
+                selected_rom_bank = 1;
             }
-            value = value & 0x1f;
-
-            rom_bank = (rom_bank & 0x60) | value;
+            //std::cout << "Selected ROM bank " << std::dec << (int)selected_rom_bank << "="<<(selected_rom_bank*0x4000)<< "\n";
             return;
         }
 
         //4000-5FFF - RAM Bank Number - or - Upper Bits of ROM Bank Number (Write Only)
         if (0x4000 <= address && address  <= 0x5FFF)
         {
-            rom_bank = (rom_bank & 0x9f) | ((value & 0x03) << 5);
+            if (rom_banking_mode)
+            {
+                selected_rom_bank &= 0b00011111;
+                selected_rom_bank |= value & 0x11100000;
+                if (selected_rom_bank == 0)
+                {
+                    selected_rom_bank = 1;
+                }
+                //std::cout << "Selected ROM bank " << std::dec<< (int)selected_rom_bank << "="<<(selected_rom_bank*0x4000)  << "\n";
+            }
+            else
+            {
+                selected_ram_bank = value & 0b11 ;
+            }
             return;
         }
 
         //6000-7FFF - Banking Mode Select (Write Only)
         if (0x6000 <= address && address  <= 0x7FFF)
         {
-            advanced_mode = value != 0;
+            uint8_t newData = value & 0x1 ;
+            rom_banking_mode = (newData != 0);
             return;
         }
 
@@ -96,13 +114,13 @@ struct MBC1 : MemoryBankController
         {
             if (ram_enabled)
             {
-                if (advanced_mode)
+                if (rom_banking_mode)
                 {
-                    ram[ram_bank *  0x2000 + address - 0xA000] = value;
+                    ram[address - 0xA000] = value;
                 }
                 else
                 {
-                    ram[address - 0xA000] = value;
+                    ram[selected_ram_bank * 0x2000 + address - 0xA000] = value;
                 }
             }
             return;

@@ -23,10 +23,6 @@ public:
 
     Bus &bus;
 
-    Mode mode = HBLANK;
-
-
-
     // 0x8000 - 0x97FF : CHR RAM
     std::uint8_t video_ram[0x2000];
     // 0xFE00 - 0xFE9F : Object Attribute Memory
@@ -46,7 +42,7 @@ public:
         struct {
             bool bg_window_priority : 1;
             bool obj_enable : 1;
-            std::uint8_t obj_size : 1; //0=8x8, 1=8x16
+            bool big_obj : 1; //0=8x8, 1=8x16
             std::uint8_t bg_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
             std::uint8_t bg_window_tile_data_area : 1; //0=8800-97FF, 1=8000-8FFF
             bool window_enable : 1;
@@ -66,14 +62,24 @@ public:
     //          1: VBlank
     //          2: Searching OAM
     //          3: Transferring Data to LCD Controller
-    std::uint8_t lcd_status = 0;
+    union {
+        std::uint8_t value = 0;
+        struct {
+            std::uint8_t mode_flag : 2; //(Read Only)
+            std::uint8_t  lyc_eq_ly_flag : 1; //(0=Different, 1=Equal) (Read Only)
+            bool hblank_STAT_interrupt_source : 1; //Bit 3 - Mode 0 HBlank STAT Interrupt source  (1=Enable) (Read/Write)
+            bool mode_vblank_STAT_interrupt_source : 1; //Bit 4 - Mode 1 VBlank STAT Interrupt source  (1=Enable) (Read/Write)
+            bool oam_STAT_interrupt_source : 1; //Bit 5 - Mode 2 OAM STAT Interrupt source     (1=Enable) (Read/Write)
+            bool lyc_STAT_interrupt_source : 1; //Bit 6 - LYC=LY STAT Interrupt source         (1=Enable) (Read/Write)
+        };
+    } lcd_status;
 
     //FF42
     std::uint8_t lcd_scroll_y = 0;
     //FF43
     std::uint8_t lcd_scroll_x = 0;
     //FF44
-    std::uint8_t scanline = 0;
+    std::uint8_t line_y = 0;
 
     //FF45
     std::uint8_t ly_compare = 0;

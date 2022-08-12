@@ -76,16 +76,17 @@ uint8_t io_read(Bus &bus, std::uint16_t address)
     if (address == 0xFF02) return serial_transfer_control_read();
 
     //$FF04	$FF07	DMG	Timer and divider
-    if (address == 0xFF04) return bus.timer.divider;
-    if (address == 0xFF05) return bus.timer.counter;
-    if (address == 0xFF06) return bus.timer.modulo;
-    if (address == 0xFF07) return bus.timer.control;
+    if (0xFF04 <= address && address <= 0xFF07) { return bus.timer.read(address); }
+
     //$FF10	$FF26	DMG	Sound
+    if (0xFF10 <= address && address <= 0xFF26) { return 0xFF; }
+
     //$FF30	$FF3F	DMG	Wave pattern
+    if (0xFF30 <= address && address <= 0xFF3F) { return 0xFF; }
+
     //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
-    if (address == 0xFF40) return bus.ppu.read(address);
-    if (address == 0xFF41) return bus.ppu.read(address);
-    if (address == 0xFF44) return bus.ppu.read(address);
+    if (0xFF40 <= address && address <= 0xFF4B) { return bus.ppu.read(address); }
+
     if (address == 0xFF4D) return 0xFF; //FF4D - KEY1 - CGB Mode Only - Prepare Speed Switch
     //$FF4F		CGB	VRAM Bank Select
     //$FF50		DMG	Set to non-zero to disable boot ROM
@@ -103,37 +104,26 @@ uint8_t io_read(Bus &bus, std::uint16_t address)
 void io_write(Bus &bus, std::uint16_t address, uint8_t value)
 {
     //$FF00		DMG	Joypad input
-    if (address == 0xFF00) {
-        bus.p1_joypad.query = value; return; }
+    if (address == 0xFF00)
+    {
+        bus.p1_joypad.query = value;
+        return;
+    }
 
     //$FF01	$FF02	DMG	Serial transfer
     if (address == 0xFF01) { serial_transfer_data_write(value); return; }
     if (address == 0xFF02) { serial_transfer_control_write(value); return; }
 
     //$FF04	$FF07	DMG	Timer and divider
-    if (address == 0xFF04) { bus.timer.divider = 0; return; };
-    if (address == 0xFF05) { bus.timer.counter = value; return; }
-    if (address == 0xFF06) { bus.timer.modulo  = value; return; }
-    if (address == 0xFF07) { bus.timer.control = value; return; }
-
-    if (address == 0xFF0F) { bus.interrupts.trigger_register = value; return; }
+    if (0xFF04 <= address && address <= 0xFF07) { return bus.timer.write(address, value); }
 
     //$FF10	$FF26	DMG	Sound
     if (0xFF10 <= address && address <= 0xFF26) { return; }
     //$FF30	$FF3F	DMG	Wave pattern
     if (0xFF30 <= address && address <= 0xFF3F) { return; }
-    //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
 
-    if (address == 0xFF40) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF41) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF42) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF43) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF46) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF47) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF48) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF49) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF4A) { bus.ppu.write(address, value); return; }
-    if (address == 0xFF4B) { bus.ppu.write(address, value); return; }
+    //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
+    if (0xFF40 <= address && address <= 0xFF4B) { return bus.ppu.write(address, value); }
 
     //$FF4F		CGB	VRAM Bank Select
     //$FF50		DMG	Set to non-zero to disable boot ROM
@@ -142,10 +132,16 @@ void io_write(Bus &bus, std::uint16_t address, uint8_t value)
     //$FF70		CGB	WRAM Bank Select
 
 
-    if (address == 0xFF03 || address == 0xFF4d || address == 0xFF7F) {
-        std::cout << std::hex << "Writing to " << address << " value " << int(value) << "\n";
-        return;
-    }
+   if (address == 0xFF03 || address == 0xFF4d || address == 0xFF7F) {
+       std::cout << std::hex << "Writing to " << address << " value " << int(value) << "\n";
+       return;
+   }
+
+    if (address == 0xFF0F) { bus.interrupts.trigger_register = value; return; }
+
+    std::ostringstream out;
+    out <<  "IO Write to " << std::hex << address << " not yet implemented";
+    throw std::runtime_error(out.str());
 }
 
 uint8_t Bus::read(std::uint16_t address)
@@ -186,6 +182,10 @@ uint8_t Bus::read(std::uint16_t address)
         //return read(address - 0x2000);
     }
     //FE00	FE9F	Sprite attribute table (OAM)
+    if (0xFE00 <= address && address <= 0xFE9F)
+    {
+        return ppu.read(address);
+    }
     //FEA0	FEFF	Not Usable	Nintendo says use of this area is prohibited
     //FF00	FF7F	I/O Registers
     if (0xFF00 <= address && address <= 0xFF7F)
@@ -205,9 +205,7 @@ uint8_t Bus::read(std::uint16_t address)
 
     std::ostringstream out;
     out <<  "Reading from " << std::hex << address << " not yet implemented";
-    std::cerr << out.str();
-    exit(1);
-    //throw std::runtime_error(out.str());
+    throw std::runtime_error(out.str());
 }
 
 void Bus::write(uint16_t address, uint8_t value)
@@ -254,7 +252,7 @@ void Bus::write(uint16_t address, uint8_t value)
     //FE00	FE9F	Sprite attribute table (OAM)
     if (0xFE00 <= address  && address <= 0xFE9F)
     {
-        ppu.obj_attribute_memory[address - 0xFE00] = value;
+        ppu.write(address, value);
         return;
     }
     //FEA0	FEFF	Not Usable	Nintendo says use of this area is prohibited
@@ -272,15 +270,7 @@ void Bus::write(uint16_t address, uint8_t value)
     //FF80	FFFE	High RAM (HRAM)
     if (0xFF80 <= address && address <= 0xFFFE)
     {
-        if (0xFFb6 <= address && address <= (0xFFb6+0x0c) && value == 0x2f)
-        {
-
-            //std::cout << "writing to " << std::hex << address << " <- " << int(value) << "\n";
-
-        }
-
         high_ram[address-0xFF80] = value;
-        //if (address == 0xffe3) throw std::logic_error("");
         return;
     }
     //FFFF	FFFF	Interrupt Enable register (IE)
@@ -295,36 +285,3 @@ void Bus::write(uint16_t address, uint8_t value)
     throw std::runtime_error(out.str());
 }
 
-void Bus::run_timer_once()
-{
-    auto prev_div = timer.divider;
-
-    ++timer.divider;
-
-    auto timer_update = false;
-
-    switch (timer.control & (0b11)) {
-        case 0b00: // Clock / 1024
-            timer_update = (prev_div & (1 << 9)) && (!(timer.divider & (1 << 9)));
-            break;
-        case 0b11: // Clock / 256
-            timer_update = (prev_div & (1 << 7)) && (!(timer.divider & (1 << 7)));
-            break;
-        case 0b10:  // Clock / 64
-            timer_update = (prev_div & (1 << 5)) && (!(timer.divider & (1 << 5)));
-            break;
-        case 0b01: // Clock / 16
-            timer_update = (prev_div & (1 << 3)) && (!(timer.divider & (1 << 3)));
-            break;
-    }
-
-    if (timer_update && timer.control & (1 << 2)) {
-        ++timer.counter;
-
-        if (timer.counter == 0xFF) {
-            timer.counter = timer.modulo;
-
-            interrupts.trigger_interrupt(Interrupts::TIMER);
-        }
-    }
-}

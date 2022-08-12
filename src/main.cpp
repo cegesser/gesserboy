@@ -140,6 +140,9 @@ public:
                 DrawString(0, 9*3, "HL:"+to_str_hex(registers.hl, 4), olc::RED);
                 DrawString(0, 9*4, "PC:"+to_str_hex(registers.pc, 4), olc::RED);
                 DrawString(0, 9*5, "SP:"+to_str_hex(registers.sp, 4), olc::RED);
+                DrawString(0, 9*6, "SX:"+std::to_string(gboy.ppu.lcd_scroll_x)
+                                 +" SY:"+std::to_string(gboy.ppu.lcd_scroll_y)
+                                 +" LYC:"+std::to_string(gboy.ppu.ly_compare), olc::RED);
             }
 
             //Draw instructions
@@ -217,7 +220,7 @@ public:
             };
         };
 
-        auto draw_tile = [&gboy=gboy](int x_pos, int y_pos, int tile_index, int tiles_offset, ObjAttribs attribs)
+        auto draw_tile = [&gboy=gboy](int x_pos, int y_pos, int tile_index, int tiles_offset, bool obj, ObjAttribs attribs)
         {
             auto tile_pixel_value=[&](int tile_index, int x, int y)
             {
@@ -239,7 +242,7 @@ public:
 
                 auto pix = tile_pixel_value(tile_index, x, y);
                 auto plt_color = gboy.ppu.bg_palette_data[pix];
-                if ( ! tiles_offset )
+                if ( obj )
                 {
                     if (attribs.x_flip && attribs.y_flip)
                     {
@@ -263,7 +266,7 @@ public:
                            : plt_color == 0 ? olc::GREY
                                             : olc::WHITE  ;
 
-                if ( tiles_offset || plt_color > 0 || attribs.bg_window_over )
+                if ( ! obj || plt_color > 0 || attribs.bg_window_over )
                 {
                     screen_area.GetData()[x_pos + x + (y_pos + y)*256] = color;
                 }
@@ -279,15 +282,15 @@ public:
 
         for (int ty=0; ty<32; ++ty) for (int tx=0; tx<32; ++tx)
         {
-            auto x_pos = tx*8;
-            auto y_pos = ty*8;
+            auto x_pos = tx*8 - gboy.ppu.lcd_scroll_x;
+            auto y_pos = ty*8 - gboy.ppu.lcd_scroll_y;
             int tile_index = gboy.ppu.video_ram[map_offset+tx+ty*32];
             if (gboy.ppu.lcd_control.bg_window_tile_data_area==0)
             {
                 tile_index = int8_t(tile_index);
             }
 
-            draw_tile(x_pos, y_pos, tile_index, tiles_offset, {0});
+            draw_tile(x_pos, y_pos, tile_index, tiles_offset, false, {0});
         }
 
         for (int s=0; s<40*4; s+=4)
@@ -298,7 +301,13 @@ public:
             ObjAttribs attribs;
             attribs.value = gboy.ppu.obj_attribute_memory[s+3];
 
-            draw_tile(sx-8, sy-16, tile, 0, attribs);
+            draw_tile(sx-8, sy-16, tile, 0, true, attribs);
+
+            if (gboy.ppu.lcd_control.big_obj)
+            {
+                draw_tile(sx-8, sy-8, tile+1, 0, true, attribs);
+            }
+
         }
 
         DrawSprite(x_start, y_start, &screen_area);
