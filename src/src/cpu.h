@@ -55,6 +55,7 @@ struct Cpu
     Bus &bus;
 
     bool halted = false;
+    bool inerrupts_master_enable_flag = true;
 
     std::string last_inst_str;
 

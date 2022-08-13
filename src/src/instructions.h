@@ -6,18 +6,6 @@
 #include <sstream>
 #include "operations.h"
 
-template<std::uint16_t OPCODE>
-struct Instruction
-{
-    static constexpr std::uint8_t size = 0;
-    static constexpr std::size_t ticks = 0;//TICKS;
-    static constexpr const char *mnemonic = "";
-
-    static constexpr bool new_style = false;
-    using impl_type = NotImplemented;
-    using result_type = typename impl_type::result_type;
-};
-
 template<std::int8_t SIZE, std::uint8_t TICKS, typename Impl>
 struct Inst {
 
@@ -31,15 +19,14 @@ struct Inst {
     static constexpr bool new_style = true;
 };
 
-
+template<std::uint16_t OPCODE>
+struct Instruction;
 
 template<typename Inst>
 inline constexpr std::uint16_t opcode_v=0;
 
 template<std::uint16_t OpCode>
 inline constexpr std::uint16_t opcode_v<Instruction<OpCode>> = OpCode;
-
-
 
 template<> struct Instruction<0x00> : Inst<1,  4, NOP> {};
 template<> struct Instruction<0x01> : Inst<3, 12, LD<BC,d16>> {};
