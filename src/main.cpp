@@ -155,10 +155,29 @@ public:
             const auto y_start = 9*7;            
 
             //draw_tileset(x_start, y_start);
-            draw_tile_map(x_start, y_start);
+            //draw_tile_map(x_start, y_start);
+            draw_screen(x_start, y_start);
         }
 
         return true;
+    }
+
+    void draw_screen(int x_start, int y_start)
+    {
+        static olc::Sprite screen_area(160, 144);
+        olc::Pixel *buffer = screen_area.GetData();
+        auto ppu_buffer = gboy.ppu.screen_buffer;
+        for (int i=0; i<160*144; ++i)
+        {
+            auto plt_color = ppu_buffer[i];
+            auto color = plt_color == 3 ? olc::BLACK
+                       : plt_color == 2 ? olc::VERY_DARK_GREY
+                       : plt_color == 1 ? olc::DARK_GREY
+                       : plt_color == 0 ? olc::GREY
+                                        : olc::WHITE  ;
+            buffer[i] = color;
+        }
+        DrawSprite(x_start, y_start, &screen_area);
     }
 
     void draw_tileset(int x_start, int y_start)

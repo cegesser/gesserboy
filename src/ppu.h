@@ -81,5 +81,6 @@ public:
     bool frame_ready = false;
 
     std::uint8_t screen_buffer[160*256];
+    void render_scanline();
 };
 
