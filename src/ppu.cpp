@@ -11,7 +11,7 @@
 static const int LINES_PER_FRAME = 154;
 static const int TICKS_PER_LINE = 456;
 static const int TICKS_MODE_2 = 80;
-static const int TICKS_MODE_3 = 205;
+static const int TICKS_MODE_3 = 250;
 static const int YRES = 144;
 static const int XRES = 160;
 
@@ -29,7 +29,7 @@ void emit_stat_interrupt(Ppu &ppu, bool condition)
 }
 
 
-//456 dots per line
+//456 ticks per line
 //156 lines per frame
 //One frame: 70224 dots @ 59.7 fps
 void Ppu::run_ounce()
@@ -41,17 +41,15 @@ void Ppu::run_ounce()
         line_tick = 0;
 
         ++line_y;
-        lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
 
         if (line_y > LINES_PER_FRAME)
         {
             line_y = 0;
-            lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
-
-
         }
 
-        if (line_y == ly_compare && lcd_status.STAT_lyc_interrupt_source)
+        lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
+
+        if (line_y == ly_compare)
         {
             emit_stat_interrupt(*this, lcd_status.STAT_lyc_interrupt_source);
         }
@@ -73,39 +71,50 @@ void Ppu::run_ounce()
         //modes 2/3/0
         if (line_tick < TICKS_MODE_2)
         {
-            if (line_tick == 0 && lcd_status.STAT_oam_interrupt_source)
+            //Searching OAM for OBJs whose Y coordinate overlap this line
+
+            if (line_tick == 0)
             {
+                lcd_status.current_mode = Ppu::OAM;
                 emit_stat_interrupt(*this, lcd_status.STAT_oam_interrupt_source);
             }
-            lcd_status.current_mode = Ppu::OAM;
-            //CPU cannot access OAM ($FE00-FE9F).
 
-            //Searching OAM for OBJs whose Y coordinate overlap this line
+
+            //CPU cannot access OAM ($FE00-FE9F).            
         }
         else if (line_tick < TICKS_MODE_3) //168 to 291 depending on sprite count
         {
-            lcd_status.current_mode = Ppu::TRANSFER;
-            //CPU cannot access OAM ($FE00-FE9F).
-            //CPU cannot access VRAM or CGB palette data registers ($FF69,$FF6B).
-
             //Reading OAM and VRAM to generate the picture
 
-            render_scanline();
+            if (lcd_status.current_mode == Ppu::OAM)
+            {
+                lcd_status.current_mode = Ppu::TRANSFER;
+                render_scanline();
+            }
+
+            //CPU cannot access OAM ($FE00-FE9F).
+            //CPU cannot access VRAM or CGB palette data registers ($FF69,$FF6B).
         }
         else
         {
+            //Returning beam to start of line
             if (lcd_status.current_mode == Ppu::TRANSFER)
             {
+                lcd_status.current_mode = Ppu::HBLANK;
                 emit_stat_interrupt(*this, lcd_status.STAT_hblank_interrupt_source);
             }
 
-            lcd_status.current_mode = Ppu::HBLANK;
         }
     }
     else
     {
         //mode 1
-        lcd_status.current_mode = Ppu::VBLANK;
+        //Returning beam to top of screen
+
+        if (lcd_status.current_mode == Ppu::HBLANK)
+        {
+            lcd_status.current_mode = Ppu::VBLANK;
+        }
     }
 }
 
@@ -149,6 +158,8 @@ void Ppu::render_scanline()
         return pix;
     };
 
+    //std::cout << std::dec << (int)line_y << " " <<  (int)lcd_scroll_x << "\n";
+
     for (int line_x=0; line_x < XRES; ++line_x)
     {
         auto ty = (32 + (lcd_scroll_y + line_y) / 8) % 32;
@@ -161,7 +172,10 @@ void Ppu::render_scanline()
             tile_index = int8_t(tile_index);
         }
 
-        auto pix = tile_pixel_value(tile_index, (lcd_scroll_x+line_x)%8, (lcd_scroll_y+line_y)%8, tiles_offset);
+        auto x_in_tile = (lcd_scroll_x+line_x)%8;
+        auto y_in_tile = (lcd_scroll_y+line_y)%8;
+
+        auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
         auto background_color = bg_palette_data[pix];
 
         screen_buffer[line_x + line_y * XRES] = background_color;

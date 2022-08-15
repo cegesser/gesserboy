@@ -342,7 +342,7 @@ int main(int argc, char**argv)
     }
 
     GesserBoy emulator(argv[1]);
-    if (emulator.Construct(260+16, 240+96, 2, 2))
+    if (emulator.Construct(260+16, 240, 4, 4))
         emulator.Start();
 
     std::cout << "The end" << std::endl;
