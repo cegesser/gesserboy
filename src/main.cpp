@@ -51,7 +51,7 @@ public:
         gboy.bus.p1_joypad.start  = GetKey(olc::Key::ENTER).bHeld;
         gboy.bus.p1_joypad.select = GetKey(olc::Key::SHIFT).bHeld;
 
-        static const float target_frame_time = 1.0f / 60.0f;
+        static const float target_frame_time = 1.0f / 120.0f;
         static float s_accumulated_time = 0.0f;
 
         s_accumulated_time += elapsed_time;

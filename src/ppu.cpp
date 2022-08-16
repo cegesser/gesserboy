@@ -12,8 +12,8 @@ static const int LINES_PER_FRAME = 154;
 static const int TICKS_PER_LINE = 456;
 static const int TICKS_MODE_2 = 80;
 static const int TICKS_MODE_3 = 250;
-static const int YRES = 144;
-static const int XRES = 160;
+static const int LCD_HEIGHT = 144;
+static const int LCD_WIDTH = 160;
 
 Ppu::Ppu(Bus &bus) : bus(bus)
 {
@@ -56,7 +56,7 @@ void Ppu::run_ounce()
     }
 
 
-    if (line_y < YRES)
+    if (line_y < LCD_HEIGHT)
     {
         //modes 2/3/0
         if (line_tick < TICKS_MODE_2)
@@ -136,12 +136,22 @@ union ObjAttribs {
 
 void Ppu::render_scanline()
 {
-    int map_offset = lcd_control.bg_tile_map_area == 0
-            ? 0x9800-0x8000
-            : 0x9C00-0x8000;
+
     int tiles_offset = lcd_control.bg_window_tile_data_area == 0
             ? 0x9000-0x8000
             : 0x8000-0x8000;
+
+    auto tile_index_on_map = [this](int map_offset, int tile_x, int tile_y)
+    {
+        auto result = video_ram[map_offset+tile_x+tile_y*32];
+
+        if (lcd_control.bg_window_tile_data_area==0)
+        {
+            result = int8_t(result);
+        }
+
+        return result;
+    };
 
     auto tile_pixel_value=[&](int tile_index, int x, int y, int tiles_offset)
     {
@@ -157,72 +167,132 @@ void Ppu::render_scanline()
         return pix;
     };
 
-    auto ty = (32 + (lcd_scroll_y + line_y) / 8) % 32;
-    auto y_in_tile = (lcd_scroll_y+line_y)%8;
-    for (int line_x=0; line_x < XRES; ++line_x)
+    std::uint8_t scanline[LCD_WIDTH] = {0};
+
+    //Draw background
+    if (lcd_control.bg_window_enable)
     {
-        auto tx = (32 + (lcd_scroll_x + line_x) / 8) % 32;
+        int map_offset = lcd_control.bg_tile_map_area == 0
+                ? 0x9800-0x8000
+                : 0x9C00-0x8000;
 
-        int tile_index = video_ram[map_offset+tx+ty*32];
+        auto scrolled_y = line_y + lcd_scroll_y;
+        auto y_on_map = scrolled_y % 256;
+        auto tile_y = y_on_map / 8;
+        auto y_in_tile = scrolled_y % 8;
 
-        if (lcd_control.bg_window_tile_data_area==0)
+        for (int line_x=0; line_x < LCD_WIDTH; ++line_x)
         {
-            tile_index = int8_t(tile_index);
+            auto scrolled_x = line_x + lcd_scroll_x;
+            auto x_on_map = scrolled_x % 256;
+            auto tile_x = x_on_map / 8;
+            auto x_in_tile = scrolled_x % 8;
+
+            //auto tile_index = tile_index_on_map(map_offset, tile_x, tile_y);
+            int tile_index = video_ram[map_offset+tile_x+tile_y*32];
+
+            if (lcd_control.bg_window_tile_data_area==0)
+            {
+                tile_index = int8_t(tile_index);
+            }
+
+            auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
+            scanline[line_x] = pix;
+
+            auto background_color = bg_palette_data[pix];
+
+            screen_buffer[line_x + line_y * LCD_WIDTH] = background_color;
         }
-
-        auto x_in_tile = (lcd_scroll_x+line_x)%8;
-
-        auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
-        auto background_color = bg_palette_data[pix];
-
-        screen_buffer[line_x + line_y * XRES] = background_color;
     }
 
-    const auto sh = lcd_control.big_obj ? 16 : 8;
-
-
-    int line_sprites = 0;
-
-    for (int n = 39; n >= 0 && line_sprites<10; --n)
+    //Draw window
+    if (lcd_control.bg_window_enable && lcd_control.window_enable)
     {
-        auto s = n*4;
+        int map_offset = lcd_control.window_tile_map_area == 0
+                ? 0x9800-0x8000
+                : 0x9C00-0x8000;
 
-        auto sy   = obj_attribute_memory[s+0] -16;
-        auto sx   = obj_attribute_memory[s+1] - 8;
-        auto tile = obj_attribute_memory[s+2];
-        auto attribs = ObjAttribs{ obj_attribute_memory[s+3] };
-
-        if (sy > line_y || (sy + sh) <= line_y)
+        auto window_y = int(line_y) - window_y_pos;
+        if (0 <= window_y  && window_y < LCD_HEIGHT)
         {
-            continue;
+            auto tile_y = window_y / 8;
+            auto y_in_tile = window_y % 8;
+
+            for (int line_x=0; line_x < LCD_WIDTH; ++line_x)
+            {
+                auto window_x = int(line_x) + window_x_pos - 7;
+
+                if (window_x < 0 || window_x >= LCD_WIDTH)
+                {
+                    continue;
+                }
+
+                auto tile_x = window_x / 8;
+                auto x_in_tile = window_x % 8;
+
+                //auto tile_index = tile_index_on_map(map_offset, tile_x, tile_y);
+                int tile_index = video_ram[map_offset+tile_x+tile_y*32];
+
+                if (lcd_control.bg_window_tile_data_area==0)
+                {
+                    tile_index = int8_t(tile_index);
+                }
+
+                auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
+                auto background_color = bg_palette_data[pix];
+
+                screen_buffer[line_x + line_y * LCD_WIDTH] = background_color;
+            }
         }
+    }
 
-        ++line_sprites;
+    if (lcd_control.obj_enable)
+    {
+        const auto obj_height = lcd_control.big_obj ? 16 : 8;
 
-        int y_in_tile = attribs.y_flip
-                ? (sh-1) - (line_y - sy)
-                : line_y - sy;
-
-        for (int x = 0; x < 8; x++)
+        for (int n = 39; n >= 0; --n)
         {
-            if (sx+x < 0 || sx+x >= 160)
+            auto s = n*4;
+
+            auto obj_y   = obj_attribute_memory[s+0] -16;
+            auto obj_x   = obj_attribute_memory[s+1] - 8;
+            auto obj_tile = obj_attribute_memory[s+2];
+            auto obj_attr = ObjAttribs{ obj_attribute_memory[s+3] };
+
+            if (obj_y > line_y || (obj_y + obj_height) <= line_y)
             {
                 continue;
             }
 
-            auto x_in_tile = attribs.x_flip
-                    ? 7-x
-                    : x;
+            int y_in_tile = obj_attr.y_flip
+                    ? (obj_height-1) - (line_y - obj_y)
+                    : line_y - obj_y;
 
-            auto pix = tile_pixel_value(tile, x_in_tile, y_in_tile, 0);
-            auto color = obj_palette_data[attribs.pallete_number][pix];
-            if (color > 0)
+            for (int x = 0; x < 8; x++)
             {
-                screen_buffer[sx + x + line_y * XRES] = color;
+                auto line_x = obj_x+x;
+                if (line_x< 0 || line_x >= LCD_WIDTH)
+                {
+                    continue;
+                }
+
+                auto x_in_tile = obj_attr.x_flip
+                        ? 7-x
+                        : x;
+
+                auto pix = tile_pixel_value(obj_tile, x_in_tile, y_in_tile, 0);
+                if (pix > 0)
+                {
+                    auto color = obj_palette_data[obj_attr.pallete_number][pix];
+
+                    if ( ! obj_attr.bg_window_over || scanline[line_x] == 0)
+                    {
+                        screen_buffer[line_x + line_y * LCD_WIDTH] = color;
+                    }
+                }
             }
         }
     }
-
 }
 
 uint8_t Ppu::read(uint16_t address) const

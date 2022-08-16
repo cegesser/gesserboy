@@ -32,7 +32,7 @@ public:
     union {
         std::uint8_t value = 0;
         struct {
-            bool bg_window_priority : 1;
+            bool bg_window_enable : 1;
             bool obj_enable : 1;
             bool big_obj : 1; //0=8x8, 1=8x16
             std::uint8_t bg_tile_map_area : 1; //0=9800-9BFF, 1=9C00-9FFF
