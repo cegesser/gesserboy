@@ -42,27 +42,17 @@ void Ppu::run_ounce()
 
         ++line_y;
 
-        if (line_y > LINES_PER_FRAME)
+        if (line_y == LINES_PER_FRAME)
         {
             line_y = 0;
         }
+    }
 
-        lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
+    lcd_status.lyc_eq_ly_flag = line_y == ly_compare;
 
-        if (line_y == ly_compare)
-        {
-            emit_stat_interrupt(*this, lcd_status.STAT_lyc_interrupt_source);
-        }
-
-        if (line_y == YRES)
-        {
-            frame_ready = true;
-            if (lcd_control.lcd_ppu_enable)
-            {
-                bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
-            }
-            emit_stat_interrupt(*this, lcd_status.STAT_vblank_interrupt_source);
-        }
+    if (line_y == ly_compare)
+    {
+        emit_stat_interrupt(*this, lcd_status.STAT_lyc_interrupt_source);
     }
 
 
@@ -86,7 +76,7 @@ void Ppu::run_ounce()
         {
             //Reading OAM and VRAM to generate the picture
 
-            if (lcd_status.current_mode == Ppu::OAM)
+            if (lcd_status.current_mode != Ppu::TRANSFER)
             {
                 lcd_status.current_mode = Ppu::TRANSFER;
                 render_scanline();
@@ -98,7 +88,7 @@ void Ppu::run_ounce()
         else
         {
             //Returning beam to start of line
-            if (lcd_status.current_mode == Ppu::TRANSFER)
+            if (lcd_status.current_mode != Ppu::HBLANK)
             {
                 lcd_status.current_mode = Ppu::HBLANK;
                 emit_stat_interrupt(*this, lcd_status.STAT_hblank_interrupt_source);
@@ -111,8 +101,17 @@ void Ppu::run_ounce()
         //mode 1
         //Returning beam to top of screen
 
-        if (lcd_status.current_mode == Ppu::HBLANK)
+        if (lcd_status.current_mode != Ppu::VBLANK)
         {
+            frame_ready = true;
+
+            if (lcd_control.lcd_ppu_enable)
+            {
+                bus.interrupts.trigger_interrupt(Interrupts::VBLANK);
+            }
+
+            emit_stat_interrupt(*this, lcd_status.STAT_vblank_interrupt_source);
+
             lcd_status.current_mode = Ppu::VBLANK;
         }
     }
@@ -158,11 +157,10 @@ void Ppu::render_scanline()
         return pix;
     };
 
-    //std::cout << std::dec << (int)line_y << " " <<  (int)lcd_scroll_x << "\n";
-
+    auto ty = (32 + (lcd_scroll_y + line_y) / 8) % 32;
+    auto y_in_tile = (lcd_scroll_y+line_y)%8;
     for (int line_x=0; line_x < XRES; ++line_x)
     {
-        auto ty = (32 + (lcd_scroll_y + line_y) / 8) % 32;
         auto tx = (32 + (lcd_scroll_x + line_x) / 8) % 32;
 
         int tile_index = video_ram[map_offset+tx+ty*32];
@@ -173,7 +171,6 @@ void Ppu::render_scanline()
         }
 
         auto x_in_tile = (lcd_scroll_x+line_x)%8;
-        auto y_in_tile = (lcd_scroll_y+line_y)%8;
 
         auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
         auto background_color = bg_palette_data[pix];
@@ -239,7 +236,7 @@ uint8_t Ppu::read(uint16_t address) const
         case 0xFF44: return line_y;
         case 0xFF45: return ly_compare;
         case 0xFF46: return 0xFF; //DMA
-        case 0xFF47: break;// - BGP (BG Palette Data) (R/W) - Non CGB Mode Only
+        case 0xFF47: return 0xFF;// - BGP (BG Palette Data) (R/W) - Non CGB Mode Only
         case 0xFF48: break;// - OBP0 (OBJ Palette 0 Data) (R/W), FF49 - OBP1 (OBJ Palette 1 Data) (R/W) - Both Non CGB Mode Only
         case 0xFF49: break;// - ^^^^^
         case 0xFF4A: return window_y_pos;

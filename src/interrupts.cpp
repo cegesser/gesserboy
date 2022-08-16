@@ -5,6 +5,8 @@ void Interrupts::trigger_interrupt(Type interrupt)
     trigger_register |= interrupt;
 }
 
+#include <iostream>
+
 int Interrupts::active_interrupt_address()
 {
     const auto interrupts_engaged = enable_register & trigger_register;
