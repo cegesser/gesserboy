@@ -88,7 +88,7 @@ uint8_t io_read(Bus &bus, std::uint16_t address)
     if (0xFF40 <= address && address <= 0xFF4B) { return bus.ppu.read(address); }
 
     if (address == 0xFF4D) return 0xFF; //FF4D - KEY1 - CGB Mode Only - Prepare Speed Switch
-    //$FF4F		CGB	VRAM Bank Select
+    if (address == 0xFF4F) return 0xFF; //$FF4F		CGB	VRAM Bank Select
     //$FF50		DMG	Set to non-zero to disable boot ROM
     //$FF51	$FF55	CGB	VRAM DMA
     //$FF68	$FF69	CGB	BG / OBJ Palettes
@@ -124,6 +124,7 @@ void io_write(Bus &bus, std::uint16_t address, uint8_t value)
 
     //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
     if (0xFF40 <= address && address <= 0xFF4B) { return bus.ppu.write(address, value); }
+    if (address == 0xFF4F) { return; }
 
     //$FF4F		CGB	VRAM Bank Select
     //$FF50		DMG	Set to non-zero to disable boot ROM
@@ -179,7 +180,7 @@ uint8_t Bus::read(std::uint16_t address)
     //E000	FDFF	Mirror of C000~DDFF (ECHO RAM)	Nintendo says use of this area is prohibited.
     if (0xE000 <= address && address <= 0xFDFF)
     {
-        //return read(address - 0x2000);
+        return read(address - 0x2000);
     }
     //FE00	FE9F	Sprite attribute table (OAM)
     if (0xFE00 <= address && address <= 0xFE9F)
@@ -187,6 +188,10 @@ uint8_t Bus::read(std::uint16_t address)
         return ppu.read(address);
     }
     //FEA0	FEFF	Not Usable	Nintendo says use of this area is prohibited
+    if (0xFEA0 <= address && address <= 0xFEFF)
+    {
+        return 0xFF;
+    }
     //FF00	FF7F	I/O Registers
     if (0xFF00 <= address && address <= 0xFF7F)
     {

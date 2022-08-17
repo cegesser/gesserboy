@@ -26,11 +26,7 @@ void System::tick()
         bus.timer.run_once();
         ppu.run_ounce();
     }
-//    log.push_back(cpu.state_str() + " | " + cpu.last_inst_str);
-//    if (log.size() > 100000)
-//    {
-//        log.pop_front();
-//    }
+
 
 //    if (uint8_t serial_control = cpu.bus.read(0xFF02); serial_control & 0x80) {
 //        uint8_t c = cpu.bus.read(0xFF01);
@@ -43,5 +39,6 @@ void System::tick()
 //        {
 //            serial_output += "\n";
 //        }
-//    }
+    //    }
 }
+

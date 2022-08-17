@@ -67,10 +67,32 @@ public:
     std::uint8_t ly_compare = 0;
 
     //0xFF47
-    std::uint8_t bg_palette_data[4];
+    union Palette
+    {
+        std::uint8_t value;
+        struct {
+            std::uint8_t at0 : 2;
+            std::uint8_t at1 : 2;
+            std::uint8_t at2 : 2;
+            std::uint8_t at3 : 2;
+        };
+        std::uint8_t operator[](int index) const
+        {
+            return 0b11 & (value >> 2*(index));
+            switch(index){
+                case 0: return at0;
+                case 1: return at1;
+                case 2: return at2;
+                case 3: return at3;
+            }
+            return value;
+        }
+    };
+
+    Palette bg_palette_data;
     //0xFF48
     //0xFF49
-    std::uint8_t obj_palette_data[2][4];
+    Palette obj_palette_data[2];
 
     //0xFF4A - WY (Window Y Position)
     std::uint8_t window_y_pos = 0;

@@ -24,11 +24,13 @@ struct CartridgeHeader {
 };
 
 const char *cartridge_type(const CartridgeHeader *header);
+bool has_battery(const CartridgeHeader *header);
 
 struct MemoryBankController
 {
-    uint8_t *rom;
-    uint8_t *ram;
+    uint8_t *rom = nullptr;
+    uint8_t *ram = nullptr;
+    bool battery_dirty = false;
 
     virtual uint8_t read(uint16_t address) = 0;
     virtual void write(uint16_t address, uint8_t value) = 0;
@@ -45,9 +47,20 @@ struct Cartridge
     Cartridge(const std::string &filename)
     {
         load(filename);
+        load_battery();
+    }
+    ~Cartridge()
+    {
+        if (mbc->battery_dirty)
+        {
+            save_battery();
+        }
     }
 
     void load(const std::string &filename);
+
+    void save_battery();
+    void load_battery();
 
     std::uint8_t read(std::uint16_t address)
     {

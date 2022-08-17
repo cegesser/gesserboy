@@ -17,8 +17,6 @@ public:
     Cpu cpu;
     Ppu ppu;
 
-    std::list<std::string> log;
-
     std::string serial_output;
 
     System(const std::string &cartridge_filename);

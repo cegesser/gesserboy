@@ -306,11 +306,16 @@ uint8_t Ppu::read(uint16_t address) const
         case 0xFF44: return line_y;
         case 0xFF45: return ly_compare;
         case 0xFF46: return 0xFF; //DMA
-        case 0xFF47: return 0xFF;// - BGP (BG Palette Data) (R/W) - Non CGB Mode Only
-        case 0xFF48: break;// - OBP0 (OBJ Palette 0 Data) (R/W), FF49 - OBP1 (OBJ Palette 1 Data) (R/W) - Both Non CGB Mode Only
-        case 0xFF49: break;// - ^^^^^
+        case 0xFF47: return bg_palette_data.value;
+        case 0xFF48: return obj_palette_data[0].value;
+        case 0xFF49: return obj_palette_data[1].value;
         case 0xFF4A: return window_y_pos;
         case 0xFF4B: return window_x_pos;
+    }
+
+    if (0xFE00 <= address  && address <= 0xFE9F)
+    {
+        return obj_attribute_memory[address - 0xFE00];
     }
 
     std::ostringstream out;
@@ -330,14 +335,6 @@ void start_dma(Bus &bus, std::uint8_t value)
      }
 }
 
-void write_palette_data(uint8_t data[4], uint8_t value)
-{
-    for(int i = 0; i < 4; i++)
-    {
-        data[i] = (value >> (i * 2)) & 3;
-    }
-}
-
 void Ppu::write(uint16_t address, uint8_t value)
 {
     if (0xFE00 <= address  && address <= 0xFE9F)
@@ -355,9 +352,9 @@ void Ppu::write(uint16_t address, uint8_t value)
         case 0xFF44: break; //line_y is read-only;
         case 0xFF45: ly_compare = value; return;
         case 0xFF46: start_dma(bus, value); return;
-        case 0xFF47: write_palette_data(bg_palette_data, value); return;
-        case 0xFF48: write_palette_data(obj_palette_data[0], value); return;
-        case 0xFF49: write_palette_data(obj_palette_data[1], value); return;
+        case 0xFF47: bg_palette_data.value = value; return;
+        case 0xFF48: obj_palette_data[0].value = value; return;
+        case 0xFF49: obj_palette_data[1].value = value; return;
         case 0xFF4A: window_y_pos = value; return;
         case 0xFF4B: window_x_pos = value; return;
     }

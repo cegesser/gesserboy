@@ -122,6 +122,7 @@ struct MBC1 : MemoryBankController
                 {
                     ram[selected_ram_bank * 0x2000 + address - 0xA000] = value;
                 }
+                battery_dirty = true;
             }
             return;
         }
@@ -129,6 +130,137 @@ struct MBC1 : MemoryBankController
         std::ostringstream out;
         out <<  "Write to cart at " << std::hex << address << " not yet implemented";
         throw std::runtime_error(out.str());
+    }
+};
+
+struct MBC3 : MBC1
+{
+    uint8_t read(uint16_t address) override
+    {
+        if (0x0000 <= address && address <= 0x3FFF)
+        {
+            return rom[address];
+        }
+
+        if (0x4000 <= address && address <= 0x7FFF)
+        {
+            return rom[selected_rom_bank * 0x4000 + address - 0x4000];
+        }
+
+        if(0xA000 <= address && address <= 0xBFFF)
+        {
+            if (ram_enabled && selected_ram_bank <= 3)
+            {
+                return ram[selected_ram_bank * 0x2000 + address - 0xA000];
+            }
+        }
+
+        return 0;
+    }
+
+    void write(uint16_t address, uint8_t value) override
+    {
+        //0000-1FFF - RAM and Timer Enable (Write Only)
+        if (0x0000 <= address && address  <= 0x1FFF)
+        {
+            ram_enabled = (value & 0x0F) == 0x0A;
+            return;
+        }
+
+        //2000-3FFF - ROM Bank Number (Write Only)
+        if (0x2000 <= address && address  <= 0x3FFF)
+        {
+            selected_rom_bank = value & 0x7F;
+            if (selected_rom_bank == 0)
+            {
+                selected_rom_bank = 1;
+            }
+            return;
+        }
+
+        //4000-5FFF - RAM Bank Number - or - RTC Register Select (Write Only)
+        if (0x4000 <= address && address  <= 0x5FFF)
+        {
+            selected_ram_bank = value & 0xF;
+            return;
+        }
+
+        if (0xA000 <= address && address <= 0xBFFF)
+        {
+            if (ram_enabled && selected_ram_bank <= 3)
+            {
+                ram[selected_ram_bank * 0x2000 + address - 0xA000] = value;
+                battery_dirty = true;
+                return;
+            }
+        }
+    }
+};
+
+struct MBC5 : MBC1
+{
+    uint8_t read(uint16_t address) override
+    {
+        if (0x0000 <= address && address <= 0x3FFF)
+        {
+            return rom[address];
+        }
+
+        if (0x4000 <= address && address <= 0x7FFF)
+        {
+            return rom[selected_rom_bank * 0x4000 + address - 0x4000];
+        }
+
+        if(0xA000 <= address && address <= 0xBFFF)
+        {
+            if (ram_enabled)
+            {
+                return ram[selected_ram_bank * 0x2000 + address - 0xA000];
+            }
+        }
+
+        return 0;
+    }
+
+    void write(uint16_t address, uint8_t value) override
+    {
+        //0000-1FFF - RAM Enable (Write Only)
+        if (0x0000 <= address && address  <= 0x1FFF)
+        {
+            ram_enabled = (value & 0x0F) == 0x0A;
+            return;
+        }
+
+        //2000-2FFF - 8 least significant bits of ROM bank number (Write Only)
+        if (0x2000 <= address && address  <= 0x2FFF)
+        {
+            selected_rom_bank = (selected_rom_bank & 0x100) | value;
+            return;
+        }
+
+        //3000-3FFF - 9th bit of ROM bank number (Write Only)
+        if (0x3000 <= address && address  <= 0x3FFF)
+        {
+            selected_rom_bank = (selected_rom_bank & 0xFF) | ((value & 1) << 8);
+            return;
+        }
+
+        //4000-5FFF - RAM bank number (Write Only)
+        if (0x4000 <= address && address  <= 0x5FFF)
+        {
+            selected_ram_bank = value & 0xF;
+            return;
+        }
+
+        if (0xA000 <= address && address <= 0xBFFF)
+        {
+            if (ram_enabled)
+            {
+                ram[selected_ram_bank * 0x2000 + address - 0xA000] = value;
+                battery_dirty = true;
+                return;
+            }
+        }
     }
 };
 
@@ -167,6 +299,27 @@ const char *cartridge_type(const CartridgeHeader *header)
         types[0xFF] = "HuC1+RAM+BATTERY";
     }
     return types[header->cartridge_type];
+}
+
+
+bool has_battery(const CartridgeHeader *header)
+{
+    switch (header->cartridge_type)
+    {
+        case 0x03: return true; //MBC1+RAM+BATTERY
+        case 0x06: return true; //MBC2+BATTERY
+        case 0x09: return true; //ROM+RAM+BATTERY 1
+        case 0x0D: return true; //MMM01+RAM+BATTERY
+        case 0x0F: return true; //MBC3+TIMER+BATTERY
+        case 0x10: return true; //MBC3+TIMER+RAM+BATTERY 2
+        case 0x13: return true; //MBC3+RAM+BATTERY 2
+        case 0x1B: return true; //MBC5+RAM+BATTERY
+        case 0x1E: return true; //MBC5+RUMBLE+RAM+BATTERY
+        case 0x22: return true; //MBC7+SENSOR+RUMBLE+RAM+BATTERY
+        case 0xFF: return true; //HuC1+RAM+BATTERY
+    }
+
+    return false;
 }
 
 void Cartridge::load(const std::string &filename)
@@ -214,13 +367,52 @@ void Cartridge::load(const std::string &filename)
     mbc = [&]() -> std::unique_ptr<MemoryBankController> {
         switch (header->cartridge_type) {
             case 0x00: return std::make_unique<MBC0>();
+
             case 0x01: return std::make_unique<MBC1>();
             case 0x02: return std::make_unique<MBC1>();
-            case 0x03: return std::make_unique<MBC1>();
-            default: throw std::runtime_error("Cartridge type not supported: "+std::to_string(header->cartridge_type));
+            case 0x03: return std::make_unique<MBC1>(); //BATTERY
+
+            case 0x0F: return std::make_unique<MBC3>();
+            case 0x10: return std::make_unique<MBC3>();
+            case 0x11: return std::make_unique<MBC3>();
+            case 0x12: return std::make_unique<MBC3>();
+            case 0x13: return std::make_unique<MBC3>(); //BATTERY 2
+
+            case 0x19: return std::make_unique<MBC5>();
+            case 0x1A: return std::make_unique<MBC5>();
+            case 0x1B: return std::make_unique<MBC5>(); //BATTERY
+            case 0x1C: return std::make_unique<MBC5>();
+            case 0x1D: return std::make_unique<MBC5>();
+            case 0x1E: return std::make_unique<MBC5>(); //BATTERY
+
+            default: throw std::runtime_error("Cartridge type not supported: "+std::to_string(header->cartridge_type)+" "+cartridge_type(header));
         }
     }();
 
     mbc->rom = rom_data.data();
     mbc->ram = ram_banks.data();
 }
+
+void Cartridge::save_battery()
+{
+    if ( ! has_battery(header) )
+    {
+        return;
+    }
+
+    std::ofstream out(std::string(header->title)+".battery", std::ios::binary);
+    out.write(reinterpret_cast<const char*>(ram_banks.data()), ram_banks.size());
+    mbc->battery_dirty = false;
+}
+
+void Cartridge::load_battery()
+{
+    if ( ! has_battery(header) )
+    {
+        return;
+    }
+
+    std::ifstream in(std::string(header->title)+".battery", std::ios::binary);
+    in.read(reinterpret_cast<char*>(ram_banks.data()), ram_banks.size());
+}
+
