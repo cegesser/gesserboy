@@ -10,11 +10,11 @@
 std::string Cpu::state_str() const
 {
     std::ostringstream out;
-    out << "PC: " << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << registers.pc << " A: "
-        << std::setw(2) << std::setfill('0') << int(registers.a)  << " BC: "
-        << std::setw(4) << std::setfill('0') << int(registers.bc) << " DE: "
-        << std::setw(4) << std::setfill('0') << int(registers.de) << " HL: "
-        << std::setw(4) << std::setfill('0') << int(registers.hl);
+    out << "PC: " << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << registers.pc
+        << " A: " << std::setw(2) << std::setfill('0') << int(registers.a)
+        << " BC: " << std::setw(4) << std::setfill('0') << int(registers.bc)
+        << " DE: " << std::setw(4) << std::setfill('0') << int(registers.de)
+        << " HL: " << std::setw(4) << std::setfill('0') << int(registers.hl);
 
     std::string flags_str = " znhc";
     if ( ! registers.flags.z) flags_str[1] = '-';
@@ -22,18 +22,22 @@ std::string Cpu::state_str() const
     if ( ! registers.flags.h) flags_str[3] = '-';
     if ( ! registers.flags.c) flags_str[4] = '-';
 
+    out << " SP: " << registers.sp << " |";
+    for (int i=0; i< 5; ++i)
+    {
+        out << " " << std::setw(2) << std::setfill('0') << (int)bus.read(registers.sp+i);
+    }
+
     return out.str() + flags_str;
 }
 
 
 template<typename Inst>
-std::string inst_to_str(const Inst &inst, const Cpu &cpu)
+void print_inst(std::ostream &out, const Cpu &cpu)
 {
-    std::ostringstream out;
-
     if constexpr (Inst::size == 0)
     {
-        return "";
+        return;
     }
 
     auto opcode = opcode_v<Inst>;
@@ -47,6 +51,7 @@ std::string inst_to_str(const Inst &inst, const Cpu &cpu)
     {
         out << "   ";
     }
+
     if constexpr (Inst::size > 2)
     {
         out << " " << std::setw(2) << std::setfill('0') << int(cpu.arg2);
@@ -59,9 +64,7 @@ std::string inst_to_str(const Inst &inst, const Cpu &cpu)
     out << "] ";
 
     using Impl = typename Inst::impl_type;
-    out << Impl::mnemonic(cpu);
-
-    return out.str();
+    Impl::print(out, cpu);
 }
 
 template<typename Inst>
@@ -124,7 +127,11 @@ std::size_t fetch_data_and_call(Cpu &cpu)
         return run_extendend_instruction_helper<>(ext_opcode, cpu);
     }
 
-    cpu.last_inst_str = inst_to_str(Inst{}, cpu);
+    {
+        std::ostringstream out;
+        print_inst<Inst>(out, cpu);
+        cpu.last_inst_str = out.str();
+    }
     return call<Inst>(cpu);
 }
 

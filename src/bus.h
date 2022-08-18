@@ -31,13 +31,13 @@ struct Bus
     Cartridge &cart;
 
     // 0xC000 - 0xCFFF : RAM Bank 0
-    std::uint8_t work_ram1[0xCFFF-0xC000] = {0};
+    std::uint8_t work_ram1[0xCFFF-0xC000+1] = {0};
 
     // 0xD000 - 0xDFFF : RAM Bank 1-7 - switchable - Color only
-    std::uint8_t work_ram2[0xDFFF-0xD000] = {0};
+    std::uint8_t work_ram2[0xDFFF-0xD000+1] = {0};
 
     // 0xFF80 - 0xFFFE : High RAM (HRAM)
-    std::uint8_t high_ram[0xFFFE-0xFF80] = {0};
+    std::uint8_t high_ram[0xFFFE-0xFF80+1] = {0};
 
     // 0xFF00 - P1/JOYP - Joypad (R/W)
     struct JoypadState

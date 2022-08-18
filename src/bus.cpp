@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 
+std::uint8_t bool_rom_register = 0xFF;
 
 std::uint8_t serial_data = 0;
 std::uint8_t serial_control = 0;
@@ -89,7 +90,10 @@ uint8_t io_read(Bus &bus, std::uint16_t address)
 
     if (address == 0xFF4D) return 0xFF; //FF4D - KEY1 - CGB Mode Only - Prepare Speed Switch
     if (address == 0xFF4F) return 0xFF; //$FF4F		CGB	VRAM Bank Select
+
     //$FF50		DMG	Set to non-zero to disable boot ROM
+    if (address == 0xFF50) return bool_rom_register;
+
     //$FF51	$FF55	CGB	VRAM DMA
     //$FF68	$FF69	CGB	BG / OBJ Palettes
     //$FF70		CGB	WRAM Bank Select
@@ -124,10 +128,13 @@ void io_write(Bus &bus, std::uint16_t address, uint8_t value)
 
     //$FF40	$FF4B	DMG	LCD Control, Status, Position, Scrolling, and Palettes
     if (0xFF40 <= address && address <= 0xFF4B) { return bus.ppu.write(address, value); }
-    if (address == 0xFF4F) { return; }
 
     //$FF4F		CGB	VRAM Bank Select
+    if (address == 0xFF4F) { return; }
+
     //$FF50		DMG	Set to non-zero to disable boot ROM
+    if (address == 0xFF50) { bool_rom_register = value; return ; }
+
     //$FF51	$FF55	CGB	VRAM DMA
     //$FF68	$FF69	CGB	BG / OBJ Palettes
     //$FF70		CGB	WRAM Bank Select

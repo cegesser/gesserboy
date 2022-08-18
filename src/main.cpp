@@ -17,7 +17,7 @@ class GesserBoy : public olc::PixelGameEngine
 
     System system;
 
-    std::vector<std::string> log;
+    std::vector<std::pair<std::string,std::string>> log;
 
 public:
     GesserBoy(const std::string &rom_file)
@@ -131,7 +131,7 @@ public:
     {
         auto log_last_inst=[&](const std::string &inst = std::string())
         {
-            log.push_back(inst.empty() ? system.cpu.last_inst_str : inst);
+            log.emplace_back(""/*system.cpu.state_str()*/, inst.empty() ? system.cpu.last_inst_str : inst);
             if (log.size() > 6)
             {
                 log.erase(log.begin());
@@ -147,7 +147,7 @@ public:
         {
             for (const auto &line : log)
             {
-                std::cout << line << std::endl;
+                std::cout << line.first << " " << line.second << std::endl;
             }
             std::cerr << e.what() << std::endl;
 
@@ -158,7 +158,7 @@ public:
         {
             for (const auto &line : log)
             {
-                std::cout << line << std::endl;
+                std::cout << line.first << " " << line.second << std::endl;
             }
             std::cerr << system.cpu.last_inst_str << std::endl;
             std::cerr << system.cpu.state_str() << " | " << e.what() << std::endl;
@@ -230,7 +230,7 @@ public:
     {
         for (size_t i=0; i<log.size(); ++i)
         {
-            DrawString(x_start, y_start + i*9, log[i], olc::RED);
+            DrawString(x_start, y_start + i*9, log[i].second, olc::RED);
         }
     }
 

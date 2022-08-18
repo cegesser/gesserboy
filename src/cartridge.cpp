@@ -31,28 +31,35 @@ struct MBC1 : MemoryBankController
     {
         if (0x0000 <= address && address <= 0x3FFF)
         {
-            return rom[address];
+            if (rom_banking_mode)
+            {
+                auto rom_bank_0 = selected_rom_bank & 0b11100000;
+                auto bank_address = address + rom_bank_0 * 0x4000;
+                return rom[bank_address & (rom_size - 1)];
+            }
+            else
+            {
+                return rom[address];
+            }
         }
 
         if (0x4000 <= address && address <= 0x7FFF)
         {
-            return rom[selected_rom_bank * 0x4000 + address - 0x4000];
+            auto bank_address = (address - 0x4000) + selected_rom_bank * 0x4000;
+            return rom[bank_address & (rom_size - 1)];
         }
 
         if (0xA000 <= address && address <= 0xBFFF)
         {
-            if ( ! ram_enabled )
+            if ( ram_enabled )
             {
-                return 0;
+                auto ram_address = rom_banking_mode
+                        ? address - 0xA000 + selected_ram_bank * 0x2000
+                        : address - 0xA000;
+
+                return ram[ram_address];
             }
-            if (rom_banking_mode)
-            {
-                return ram[address - 0xA000];
-            }
-            else
-            {
-                return ram[selected_ram_bank * 0x2000 + address - 0xA000];
-            }
+            return 0xFF;
         }
 
         std::ostringstream out;
@@ -65,7 +72,7 @@ struct MBC1 : MemoryBankController
         //0000-1FFF - RAM Enable (Write Only)
         if (0x0000 <= address && address  <= 0x1FFF)
         {
-            ram_enabled = (value & 0x0F) == 0x0A;
+            ram_enabled = (value & 0xF) == 0xA;
             return;
         }
 
@@ -74,9 +81,10 @@ struct MBC1 : MemoryBankController
         {
             selected_rom_bank &= 0b11100000;
             selected_rom_bank |= value & 0b00011111 ;
-            if (selected_rom_bank == 0)
+
+            if ((selected_rom_bank & 0x1F) == 0)
             {
-                selected_rom_bank = 1;
+                ++selected_rom_bank;
             }
             //std::cout << "Selected ROM bank " << std::dec << (int)selected_rom_bank << "="<<(selected_rom_bank*0x4000)<< "\n";
             return;
@@ -85,28 +93,24 @@ struct MBC1 : MemoryBankController
         //4000-5FFF - RAM Bank Number - or - Upper Bits of ROM Bank Number (Write Only)
         if (0x4000 <= address && address  <= 0x5FFF)
         {
-            if (rom_banking_mode)
+            selected_ram_bank = value & 0b11 ;
+            if (selected_ram_bank * 0x2000 >= ram_size)
             {
-                selected_rom_bank &= 0b00011111;
-                selected_rom_bank |= value & 0x11100000;
-                if (selected_rom_bank == 0)
-                {
-                    selected_rom_bank = 1;
-                }
-                //std::cout << "Selected ROM bank " << std::dec<< (int)selected_rom_bank << "="<<(selected_rom_bank*0x4000)  << "\n";
+                auto max_bank = ram_size/0x2000;
+                selected_ram_bank &= (max_bank - 1);
             }
-            else
-            {
-                selected_ram_bank = value & 0b11 ;
-            }
+
+            selected_rom_bank &= 0b00011111;
+            selected_rom_bank |= value << 5;
+
             return;
         }
 
         //6000-7FFF - Banking Mode Select (Write Only)
         if (0x6000 <= address && address  <= 0x7FFF)
         {
-            uint8_t newData = value & 0x1 ;
-            rom_banking_mode = (newData != 0);
+            uint8_t mode = value & 0x1 ;
+            rom_banking_mode = (mode != 0);
             return;
         }
 
@@ -114,14 +118,11 @@ struct MBC1 : MemoryBankController
         {
             if (ram_enabled)
             {
-                if (rom_banking_mode)
-                {
-                    ram[address - 0xA000] = value;
-                }
-                else
-                {
-                    ram[selected_ram_bank * 0x2000 + address - 0xA000] = value;
-                }
+                auto ram_address = rom_banking_mode
+                        ? address - 0xA000 + selected_ram_bank * 0x2000
+                        : address - 0xA000;
+
+                ram[ram_address] = value;
                 battery_dirty = true;
             }
             return;
@@ -390,7 +391,9 @@ void Cartridge::load(const std::string &filename)
     }();
 
     mbc->rom = rom_data.data();
+    mbc->rom_size = rom_data.size();
     mbc->ram = ram_banks.data();
+    mbc->ram_size = ram_banks.size();
 }
 
 void Cartridge::save_battery()

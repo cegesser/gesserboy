@@ -29,7 +29,11 @@ bool has_battery(const CartridgeHeader *header);
 struct MemoryBankController
 {
     uint8_t *rom = nullptr;
+    std::size_t rom_size=0;
+
     uint8_t *ram = nullptr;
+    std::size_t ram_size=0;
+
     bool battery_dirty = false;
 
     virtual uint8_t read(uint16_t address) = 0;
