@@ -15,6 +15,8 @@ class GesserBoy : public olc::PixelGameEngine
     bool scanline_stepping = false;
     bool frame_stepping = false;
 
+    int mode = 0;
+
     System system;
 
     std::vector<std::pair<std::string,std::string>> log;
@@ -81,10 +83,19 @@ public:
             draw_debug_info(0, 0);
             draw_last_instructions(81, 0);
 
-            draw_screen(0, 9*7);
-
-            //draw_tileset(x_start, y_start);
-            //draw_tile_map(x_start, y_start);
+            if (mode == 1)
+            {
+                draw_screen(0, 9*7, 1);
+                draw_tileset(164, 9*7);
+            }
+            else if (mode == 2)
+            {
+                draw_tile_map(0, 9*7);
+            }
+            else
+            {
+                draw_screen(0, 9*7, 2);
+            }
         }
 
         return true;
@@ -115,6 +126,12 @@ public:
             frame_stepping = ! frame_stepping;
             running = false;
         }
+
+        if (GetKey(olc::Key::M).bPressed)
+        {
+            mode = (mode+1) % 3;
+        }
+
         system.bus.p1_joypad.a      = GetKey(olc::Key::Z).bHeld;
         system.bus.p1_joypad.b      = GetKey(olc::Key::X).bHeld;
         system.bus.p1_joypad.up     = GetKey(olc::Key::UP).bHeld;
@@ -178,22 +195,25 @@ public:
         system.ppu.frame_ready = false;
     }
 
-    void draw_screen(int x_start, int y_start)
+    auto color(int plt_color)
+    {
+        return plt_color == 3 ? olc::BLACK
+             : plt_color == 2 ? olc::VERY_DARK_GREY
+             : plt_color == 1 ? olc::DARK_GREY
+             : plt_color == 0 ? olc::GREY
+                              : olc::WHITE  ;
+    }
+
+    void draw_screen(int x_start, int y_start, int scale)
     {
         static olc::Sprite screen_area(160, 144);
         olc::Pixel *buffer = screen_area.GetData();
         auto ppu_buffer = system.ppu.screen_buffer;
         for (int i=0; i<160*144; ++i)
         {
-            auto plt_color = ppu_buffer[i];
-            auto color = plt_color == 3 ? olc::BLACK
-                       : plt_color == 2 ? olc::VERY_DARK_GREY
-                       : plt_color == 1 ? olc::DARK_GREY
-                       : plt_color == 0 ? olc::GREY
-                                        : olc::WHITE  ;
-            buffer[i] = color;
+            buffer[i] = color(ppu_buffer[i]);
         }
-        DrawSprite(x_start, y_start, &screen_area);
+        DrawSprite(x_start, y_start, &screen_area, scale);
     }
 
     void draw_debug_info(int x_start, int y_start)
@@ -238,33 +258,19 @@ public:
     {
         for (int t=0; t<384; ++t)
         {
-            auto tile_pixel_index=[&ppu=system.ppu](int tile, int x, int y)
-            {
-                auto tile_start = ppu.video_ram + tile*16;
-
-                auto b0 = tile_start[2*y];
-                auto b1 = tile_start[2*y+1];
-
-                auto mask = 1 << (7-x);
-                auto pix = ((b0 & mask) >> (7-x) )
-                         | ((b1 & mask) >> (6-x) );
-
-                return pix;
-            };
 
             for (int y=0; y<8; ++y)
             {
                 for (int x=0; x<8; ++x)
                 {
-                    auto pix = tile_pixel_index(t, x, y);
+                    auto pix = system.ppu.tile_pixel_value(t, x, y, 0);
 
-                    if (pix == 0) continue;
-                    auto color = pix == 2 ? olc::DARK_GREY
-                               : pix == 3 ? olc::GREY
-                               : pix == 1 ? olc::VERY_DARK_GREY
-                                          : olc::WHITE;
-                    Draw((t * 8 % 160) + x,
-                         y_start + (y + t * 8 / 160 * 8), color);
+                    auto color = pix == 1 ? olc::VERY_DARK_GREY
+                               : pix == 2 ? olc::DARK_GREY
+                               : pix == 3 ? olc::BLACK
+                                          : olc::GREY;
+                    Draw(x_start + x + t * 8 % 160,
+                         y_start + y + t * 8 / 160 * 8, color);
                 }
             }
         }
@@ -274,113 +280,25 @@ public:
     {
         static olc::Sprite screen_area(256, 256);
 
-        union ObjAttribs {
-            std::uint8_t value;
-            struct {
-                std::uint8_t cgb_pallete_number : 3;
-                bool cgb_tile_vram_bank : 1;
-                std::uint8_t pallete_number : 1;
-                bool x_flip : 1;
-                bool y_flip : 1;
-                bool bg_window_over : 1;
+        auto raw_map = system.ppu.render_tiles_map();
 
-//                    Bit7   BG and Window over OBJ (0=No, 1=BG and Window colors 1-3 over the OBJ)
-//                    Bit6   Y flip          (0=Normal, 1=Vertically mirrored)
-//                    Bit5   X flip          (0=Normal, 1=Horizontally mirrored)
-//                    Bit4   Palette number  **Non CGB Mode Only** (0=OBP0, 1=OBP1)
-//                    Bit3   Tile VRAM-Bank  **CGB Mode Only**     (0=Bank 0, 1=Bank 1)
-//                    Bit2-0 Palette number  **CGB Mode Only**     (OBP0-7)
-            };
-        };
+        olc::Pixel *buffer = screen_area.GetData();
 
-        auto draw_tile = [&system=system](int x_pos, int y_pos, int tile_index, int tiles_offset, bool obj, ObjAttribs attribs)
+        for (int i=0; i<256*256; ++i)
         {
-            auto tile_pixel_value=[&](int tile_index, int x, int y)
-            {
-                auto tile_start = system.ppu.video_ram + tiles_offset + tile_index*16;
-
-                auto b0 = tile_start[2*y];
-                auto b1 = tile_start[2*y+1];
-
-                auto mask = 1 << (7-x);
-                auto pix = ((b0 & mask) ? 1 : 0)
-                         | ((b1 & mask) ? 2 : 0);
-
-                return pix;
-            };
-            for (int y=0; y<8; ++y) for (int x=0; x<8; ++x)
-            {
-                if (x_pos + x < 0 || x_pos + x > 255
-                 || y_pos + y < 0 || y_pos + y > 255) continue;
-
-                auto pix = tile_pixel_value(tile_index, x, y);
-                auto plt_color = system.ppu.bg_palette_data[pix];
-                if ( obj )
-                {
-                    if (attribs.x_flip && attribs.y_flip)
-                    {
-                        pix = tile_pixel_value(tile_index, 8-x, 8-y);
-                    }
-                    else if (attribs.x_flip)
-                    {
-                        pix = tile_pixel_value(tile_index, 8-x, y);
-                    }
-                    else if (attribs.y_flip)
-                    {
-                        pix = tile_pixel_value(tile_index, x, 8-y);
-                    }
-
-                    plt_color = system.ppu.obj_palette_data[attribs.pallete_number][pix];
-                }
-
-                auto color = plt_color == 3 ? olc::BLACK
-                           : plt_color == 2 ? olc::VERY_DARK_GREY
-                           : plt_color == 1 ? olc::DARK_GREY
-                           : plt_color == 0 ? olc::GREY
-                                            : olc::WHITE  ;
-
-                if ( ! obj || plt_color > 0 || attribs.bg_window_over )
-                {
-                    screen_area.GetData()[x_pos + x + (y_pos + y)*256] = color;
-                }
-            }
-        };
-
-        int map_offset = system.ppu.lcd_control.bg_tile_map_area == 0
-                ? 0x9800-0x8000
-                : 0x9C00-0x8000;
-        int tiles_offset = system.ppu.lcd_control.bg_window_tile_data_area == 0
-                ? 0x9000-0x8000
-                : 0x8000-0x8000;
-
-        for (int ty=0; ty<32; ++ty) for (int tx=0; tx<32; ++tx)
-        {
-            auto x_pos = (tx*8 - system.ppu.lcd_scroll_x + 256)%256;
-            auto y_pos = (ty*8 - system.ppu.lcd_scroll_y + 256)%256;
-            int tile_index = system.ppu.video_ram[map_offset+tx+ty*32];
-            if (system.ppu.lcd_control.bg_window_tile_data_area==0)
-            {
-                tile_index = int8_t(tile_index);
-            }
-
-            draw_tile(x_pos, y_pos, tile_index, tiles_offset, false, {0});
+            buffer[i] = color(raw_map[i]);
         }
 
-        for (int s=0; s<40*4; s+=4)
+        for (int x=0; x<160; ++x)
         {
-            auto sy = system.ppu.obj_attribute_memory[s+0];
-            auto sx = system.ppu.obj_attribute_memory[s+1];
-            auto tile = system.ppu.obj_attribute_memory[s+2];
-            ObjAttribs attribs;
-            attribs.value = system.ppu.obj_attribute_memory[s+3];
+            screen_area.SetPixel((x+system.ppu.lcd_scroll_x/8)%256, (system.ppu.lcd_scroll_y/8)%256, olc::RED);
+            screen_area.SetPixel((x+system.ppu.lcd_scroll_x/8)%256, (system.ppu.lcd_scroll_y/8+144)%256, olc::RED);
+        }
 
-            draw_tile(sx-8, sy-16, tile, 0, true, attribs);
-
-            if (system.ppu.lcd_control.big_obj)
-            {
-                draw_tile(sx-8, sy-8, tile+1, 0, true, attribs);
-            }
-
+        for (int y=0; y<144; ++y)
+        {
+            screen_area.SetPixel((system.ppu.lcd_scroll_x/8)%256,     (y+system.ppu.lcd_scroll_y/8)%256, olc::RED);
+            screen_area.SetPixel((system.ppu.lcd_scroll_x/8+160)%256, (y+system.ppu.lcd_scroll_y/8)%256, olc::RED);
         }
 
         DrawSprite(x_start, y_start, &screen_area);
@@ -398,7 +316,7 @@ int main(int argc, char**argv)
     try
     {
         GesserBoy emulator(argv[1]);
-        if (emulator.Construct(260+16, 240, 4, 4))
+        if (emulator.Construct(330, 352, 2, 2))
             emulator.Start();
     }
     catch(std::exception const &e)

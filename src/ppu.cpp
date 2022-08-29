@@ -79,7 +79,7 @@ void Ppu::run_ounce()
             if (lcd_status.current_mode != Ppu::TRANSFER)
             {
                 lcd_status.current_mode = Ppu::TRANSFER;
-                render_scanline();
+                render_current_scanline();
             }
 
             //CPU cannot access OAM ($FE00-FE9F).
@@ -134,39 +134,35 @@ union ObjAttribs {
     };
 };
 
-void Ppu::render_scanline()
+
+int Ppu::tile_index_on_map(int map_offset, int tile_x, int tile_y)
 {
+    int tile_index = video_ram[map_offset+tile_x+tile_y*32];
 
-    int tiles_offset = lcd_control.bg_window_tile_data_area == 0
-            ? 0x9000-0x8000
-            : 0x8000-0x8000;
-
-    auto tile_index_on_map = [this](int map_offset, int tile_x, int tile_y)
+    if (lcd_control.bg_window_tile_data_area==0)
     {
-        auto result = video_ram[map_offset+tile_x+tile_y*32];
+        tile_index = int8_t(tile_index);
+    }
 
-        if (lcd_control.bg_window_tile_data_area==0)
-        {
-            result = int8_t(result);
-        }
+    return tile_index;
+}
 
-        return result;
-    };
+int Ppu::tile_pixel_value(int tile_index, int x, int y, int tiles_offset)
+{
+    auto tile_start = video_ram + tiles_offset + tile_index*16;
 
-    auto tile_pixel_value=[&](int tile_index, int x, int y, int tiles_offset)
-    {
-        auto tile_start = video_ram + tiles_offset + tile_index*16;
+    auto b0 = tile_start[2*y];
+    auto b1 = tile_start[2*y+1];
 
-        auto b0 = tile_start[2*y];
-        auto b1 = tile_start[2*y+1];
+    auto mask = 1 << (7-x);
+    auto pix = ((b0 & mask) ? 1 : 0)
+             | ((b1 & mask) ? 2 : 0);
 
-        auto mask = 1 << (7-x);
-        auto pix = ((b0 & mask) ? 1 : 0)
-                 | ((b1 & mask) ? 2 : 0);
+    return pix;
+}
 
-        return pix;
-    };
-
+void Ppu::render_current_scanline()
+{
     std::uint8_t scanline[LCD_WIDTH] = {0};
 
     //Draw background
@@ -188,15 +184,9 @@ void Ppu::render_scanline()
             auto tile_x = x_on_map / 8;
             auto x_in_tile = scrolled_x % 8;
 
-            //auto tile_index = tile_index_on_map(map_offset, tile_x, tile_y);
-            int tile_index = video_ram[map_offset+tile_x+tile_y*32];
+            auto tile_index = tile_index_on_map(map_offset, tile_x, tile_y);
 
-            if (lcd_control.bg_window_tile_data_area==0)
-            {
-                tile_index = int8_t(tile_index);
-            }
-
-            auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
+            auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset());
             scanline[line_x] = pix;
 
             auto background_color = bg_palette_data[pix];
@@ -230,15 +220,9 @@ void Ppu::render_scanline()
                 auto tile_x = window_x / 8;
                 auto x_in_tile = window_x % 8;
 
-                //auto tile_index = tile_index_on_map(map_offset, tile_x, tile_y);
-                int tile_index = video_ram[map_offset+tile_x+tile_y*32];
+                auto tile_index = tile_index_on_map(map_offset, tile_x, tile_y);
 
-                if (lcd_control.bg_window_tile_data_area==0)
-                {
-                    tile_index = int8_t(tile_index);
-                }
-
-                auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset);
+                auto pix = tile_pixel_value(tile_index, x_in_tile, y_in_tile, tiles_offset());
                 auto background_color = bg_palette_data[pix];
 
                 screen_buffer[line_x + line_y * LCD_WIDTH] = background_color;
@@ -293,6 +277,92 @@ void Ppu::render_scanline()
             }
         }
     }
+}
+
+std::array<uint8_t, 256*256> Ppu::render_tiles_map()
+{
+    std::array<uint8_t, 256*256> screen_buffer {0};
+    std::array<uint8_t, 256*256> raw_bg_plt_idx {0};
+
+    std::uint8_t scanline[LCD_WIDTH] = {0};
+
+    auto draw_tile = [&](int x_pos, int y_pos, int tile_index, int tiles_offset, bool obj, ObjAttribs attribs)
+    {
+        for (int y=0; y<8; ++y) for (int x=0; x<8; ++x)
+        {
+            if (x_pos + x < 0 || x_pos + x > 255
+                    || y_pos + y < 0 || y_pos + y > 255) continue;
+
+            auto pix = tile_pixel_value(tile_index, x, y, tiles_offset);
+
+            auto buffer_index = x_pos + x + (y_pos + y)*256;
+            if ( ! obj )
+            {
+                raw_bg_plt_idx[buffer_index] = pix;
+                auto plt_color = bg_palette_data[pix];
+                screen_buffer[buffer_index] = plt_color;
+            }
+            else if ( raw_bg_plt_idx[buffer_index] == 0 || ! attribs.bg_window_over )
+            {
+                if (attribs.x_flip && attribs.y_flip)
+                {
+                    pix = tile_pixel_value(tile_index, 7-x, 7-y, tiles_offset);
+                }
+                else if (attribs.x_flip)
+                {
+                    pix = tile_pixel_value(tile_index, 7-x, y, tiles_offset);
+                }
+                else if (attribs.y_flip)
+                {
+                    pix = tile_pixel_value(tile_index, x, 7-y, tiles_offset);
+                }
+
+                if (pix > 0)
+                {
+                    auto plt_color = obj_palette_data[attribs.pallete_number][pix];
+                    screen_buffer[buffer_index] = plt_color;
+                }
+            }
+        }
+    };
+
+    int map_offset = lcd_control.bg_tile_map_area == 0
+            ? 0x9800-0x8000
+            : 0x9C00-0x8000;
+
+    //Draw background
+    for (int ty=0; ty<32; ++ty) for (int tx=0; tx<32; ++tx)
+    {
+        auto x_pos = (tx*8 - lcd_scroll_x + 256)%256;
+        auto y_pos = (ty*8 - lcd_scroll_y + 256)%256;
+        int tile_index = video_ram[map_offset+tx+ty*32];
+        if (lcd_control.bg_window_tile_data_area==0)
+        {
+            tile_index = int8_t(tile_index);
+        }
+
+        draw_tile(x_pos, y_pos, tile_index, tiles_offset(), false, {0});
+    }
+
+    //Draw sprites
+    for (int s=0; s<40*4; s+=4)
+    {
+        auto sy = obj_attribute_memory[s+0];
+        auto sx = obj_attribute_memory[s+1];
+        auto tile = obj_attribute_memory[s+2];
+        ObjAttribs attribs;
+        attribs.value = obj_attribute_memory[s+3];
+
+        draw_tile(sx-8, sy-16, tile, 0, true, attribs);
+
+        if (lcd_control.big_obj)
+        {
+            draw_tile(sx-8, sy-8, tile+1, 0, true, attribs);
+        }
+
+    }
+
+    return screen_buffer;
 }
 
 uint8_t Ppu::read(uint16_t address) const
@@ -363,4 +433,5 @@ void Ppu::write(uint16_t address, uint8_t value)
     out <<  "PPU write to " << std::hex << address << " not yet implemented";
     throw std::runtime_error(out.str());
 }
+
 

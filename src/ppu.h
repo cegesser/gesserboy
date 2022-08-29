@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 
 struct Bus;
 
@@ -102,7 +103,18 @@ public:
     int line_tick = -1;
     bool frame_ready = false;
 
+    int tiles_offset() const {
+        return lcd_control.bg_window_tile_data_area == 0
+            ? 0x9000-0x8000
+            : 0x8000-0x8000;
+    }
+
+    int tile_index_on_map(int map_offset, int tile_x, int tile_y);
+    int tile_pixel_value(int tile_index, int x, int y, int tiles_offset);
+
     std::uint8_t screen_buffer[160*256];
-    void render_scanline();
+    void render_current_scanline();
+
+    std::array<std::uint8_t,256*256> render_tiles_map();
 };
 
