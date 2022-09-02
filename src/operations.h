@@ -186,7 +186,7 @@ struct At
     static data_type get(Cpu &cpu)
     {
         std::uint16_t address = Loc::get(cpu);
-        if constexpr (sizeof(Loc::data_type) == 1)
+        if constexpr (sizeof(typename Loc::data_type) == 1)
         {
             address += 0xFF00;
         }
@@ -204,7 +204,7 @@ struct At
     static void put(Cpu &cpu, data_type value)
     {
         std::uint16_t address = Loc::get(cpu);
-        if constexpr (sizeof(Loc::data_type) == 1)
+        if constexpr (sizeof(typename Loc::data_type) == 1)
         {
             address += 0xFF00;
         }
@@ -224,7 +224,7 @@ struct At
 
         out << "(";
 
-        if constexpr (sizeof(Loc::data_type) == 1)
+        if constexpr (sizeof(typename Loc::data_type) == 1)
         {
             out << "FF00+";
             Loc::print_op(out, cpu);
@@ -629,9 +629,9 @@ struct INC : Operation<1>
 
     static void execute(Cpu &cpu)
     {
-        Val::data_type new_value = Val::get(cpu) + 1;
+        typename Val::data_type new_value = Val::get(cpu) + 1;
         Val::put(cpu, new_value);
-        if constexpr (sizeof(Val::data_type) == 1)
+        if constexpr (sizeof(typename Val::data_type) == 1)
         {
             cpu.registers.flags.z = new_value == 0;
             cpu.registers.flags.n = false;
@@ -652,9 +652,9 @@ struct DEC : Operation<1>
 
     static void execute(Cpu &cpu)
     {
-        Val::data_type new_value= Val::get(cpu) - 1;
+        typename Val::data_type new_value= Val::get(cpu) - 1;
         Val::put(cpu, new_value);
-        if constexpr (sizeof(Val::data_type) == 1)
+        if constexpr (sizeof(typename Val::data_type) == 1)
         {
             cpu.registers.flags.z = new_value == 0;
             cpu.registers.flags.n = true;
@@ -701,11 +701,11 @@ struct ADD : Operation<1+Dst::size+Src::size>
         auto src_value = Src::get(cpu);
 
         static_assert (sizeof(dst_value) == sizeof(src_value)
-                || (sizeof(Dst::data_type) == 2 && sizeof(Src::data_type) == 1));
+                || (sizeof(typename Dst::data_type) == 2 && sizeof(typename Src::data_type) == 1));
 
         std::uint32_t result = dst_value + src_value;
 
-        if constexpr (sizeof(Dst::data_type) == 2 && sizeof(Src::data_type) == 1) //ADD SP, r8
+        if constexpr (sizeof(typename Dst::data_type) == 2 && sizeof(typename Src::data_type) == 1) //ADD SP, r8
         {            
             cpu.registers.flags.z = false;
             cpu.registers.flags.n = false;
@@ -716,7 +716,7 @@ struct ADD : Operation<1+Dst::size+Src::size>
             return;
         }
 
-        if constexpr (sizeof(Src::data_type) == 1)
+        if constexpr (sizeof(typename Src::data_type) == 1)
         {
             std::uint8_t result8 = (result & 0xFF);
 
@@ -729,7 +729,7 @@ struct ADD : Operation<1+Dst::size+Src::size>
             return;
         }
 
-        if constexpr (sizeof(Src::data_type) == 2)
+        if constexpr (sizeof(typename Src::data_type) == 2)
         {
             cpu.registers.flags.n = false;
             cpu.registers.flags.h = (dst_value & 0xFFF) + (src_value & 0xFFF) > 0xFFF;
