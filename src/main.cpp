@@ -6,6 +6,10 @@
 #include "system.h"
 
 //----------------
+#if __GNUC__ < 8
+#define FORCE_EXPERIMENTAL_FS
+#endif
+
 #define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
 
